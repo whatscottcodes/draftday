@@ -225,6 +225,7 @@ class YahooConfig(Base):
     game_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     game_code: Mapped[str] = mapped_column(String(10), default="nfl")
     season_id: Mapped[str] = mapped_column(String(20), default="")
+    week: Mapped[int | None] = mapped_column(Integer, nullable=True)
     consumer_key: Mapped[str] = mapped_column(String(500), default="")
     consumer_secret: Mapped[str] = mapped_column(String(500), default="")
     access_token_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)

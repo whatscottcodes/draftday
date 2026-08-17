@@ -617,6 +617,101 @@ def test_keeper_admin_yahoo_config_and_authorize(client):
     assert r.status_code == 400  # not authorized
 
 
+def test_keeper_admin_yahoo_test_and_teams(client, monkeypatch):
+    c, session = client
+    data = _create_league(c)
+    token = data["access_token"]
+
+    # No config -> 400.
+    r = c.post(f"/api/draft/{token}/admin/keepers/yahoo/teams")
+    assert r.status_code == 400
+
+    c.post(
+        f"/api/draft/{token}/admin/keepers/yahoo-config",
+        json={
+            "league_id_external": "735068",
+            "game_id": 449,
+            "consumer_key": "consumer_key_x",
+            "consumer_secret": "shhhhh",
+        },
+    )
+    # Config set but no token -> 400.
+    assert c.post(f"/api/draft/{token}/admin/keepers/yahoo/teams").status_code == 400
+
+    from app.draft import yahoo as yahoo_mod
+    from app.models import YahooConfig
+
+    cfg = session.query(YahooConfig).one()
+    cfg.access_token_json = {
+        "access_token": "fake-token",
+        "consumer_key": "consumer_key_x",
+        "consumer_secret": "shhhhh",
+        "guid": "g",
+        "refresh_token": "",
+        "token_time": 0,
+        "token_type": "bearer",
+    }
+    session.commit()
+
+    monkeypatch.setattr(
+        yahoo_mod,
+        "fetch_league_teams",
+        lambda **kwargs: ["Team A", "Team B"],
+    )
+    r = c.post(f"/api/draft/{token}/admin/keepers/yahoo/teams")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["teams"] == ["Team A", "Team B"]
+    assert body["count"] == 2
+
+    setup = c.get(f"/api/draft/{token}/admin/keepers/setup").json()
+    assert setup["rosters"]["teams"] == ["Team A", "Team B"]
+    assert setup["rosters"]["player_count"] == 0
+
+    # Test saving Yahoo config when already authorized automatically refreshes team names
+    monkeypatch.setattr(
+        yahoo_mod,
+        "fetch_league_teams",
+        lambda **kwargs: ["Team Alpha", "Team Beta"],
+    )
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/yahoo-config",
+        json={
+            "league_id_external": "735068",
+            "game_id": 449,
+            "season_id": "2025",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["teams_fetched"] is True
+    assert r.json()["teams"] == ["Team Alpha", "Team Beta"]
+
+    setup = c.get(f"/api/draft/{token}/admin/keepers/setup").json()
+    assert setup["rosters"]["teams"] == ["Team Alpha", "Team Beta"]
+
+    # Test OAuth callback automatically pulls team names upon connection
+    monkeypatch.setattr(
+        yahoo_mod,
+        "exchange_code",
+        lambda *args, **kwargs: {"access_token": "new-token", "refresh_token": "rf", "token_type": "bearer"},
+    )
+    monkeypatch.setattr(
+        yahoo_mod,
+        "fetch_league_teams",
+        lambda **kwargs: ["Team X", "Team Y"],
+    )
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/yahoo/callback",
+        json={"code": "valid-oauth-code"},
+    )
+    assert r.status_code == 200
+    assert r.json()["teams_fetched"] is True
+    assert r.json()["teams"] == ["Team X", "Team Y"]
+
+    setup = c.get(f"/api/draft/{token}/admin/keepers/setup").json()
+    assert setup["rosters"]["teams"] == ["Team X", "Team Y"]
+
+
 def _complete_league_with_picks(c, session, data, picks):
     """Drive `data` (from _create_league) to COMPLETED with direct Pick rows.
 

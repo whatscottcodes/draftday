@@ -588,68 +588,6 @@ def export_keepers(token: str, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------- yahoo
 
 
-@router.post("/draft/{token}/admin/keepers/yahoo-config")
-def save_yahoo_config(
-    token: str, body: YahooConfigIn, db: Session = Depends(get_db)
-):
-    league = _get_league(db, token)
-    config = _get_yahoo_config(db, league)
-    if config is None:
-        config = YahooConfig(league_id=league.id)
-        db.add(config)
-    if body.league_id_external:
-        config.league_id_external = body.league_id_external
-    if body.game_id is not None:
-        config.game_id = body.game_id
-    if body.game_code:
-        config.game_code = body.game_code
-    if body.season_id:
-        config.season_id = body.season_id
-    config.week = body.week
-    if body.consumer_key:
-        config.consumer_key = body.consumer_key
-    if body.consumer_secret:
-        config.consumer_secret = body.consumer_secret
-    _commit(db)
-    return {"ok": True, "yahoo": _masked_yahoo(config)}
-
-
-@router.post("/draft/{token}/admin/keepers/yahoo/authorize")
-def yahoo_authorize(token: str, db: Session = Depends(get_db)):
-    league = _get_league(db, token)
-    config = _get_yahoo_config(db, league)
-    if config is None or not config.consumer_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Set a Yahoo consumer key first",
-        )
-    return {"ok": True, "authorization_url": yahoo_mod.authorization_url(config.consumer_key)}
-
-
-@router.post("/draft/{token}/admin/keepers/yahoo/callback")
-def yahoo_callback(
-    token: str, body: YahooCodeIn, db: Session = Depends(get_db)
-):
-    league = _get_league(db, token)
-    config = _get_yahoo_config(db, league)
-    if config is None or not (config.consumer_key and config.consumer_secret):
-        raise HTTPException(
-            status_code=400,
-            detail="Yahoo consumer key/secret not configured",
-        )
-    try:
-        token_body = yahoo_mod.exchange_code(
-            config.consumer_key, config.consumer_secret, body.code
-        )
-    except YahooError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    config.access_token_json = yahoo_mod.build_token_json(
-        config.consumer_key, config.consumer_secret, token_body
-    )
-    _commit(db)
-    return {"ok": True, "yahoo": _masked_yahoo(config)}
-
-
 def _ensure_token(db: Session, config: YahooConfig) -> dict:
     token = config.access_token_json or {}
     if not token.get("access_token"):
@@ -681,6 +619,123 @@ def _ensure_token(db: Session, config: YahooConfig) -> dict:
             _commit(db)
             return config.access_token_json
     return token
+
+
+def _fetch_teams_for_config(db: Session, config: YahooConfig) -> list[str]:
+    token_json = _ensure_token(db, config)
+    game_id = config.game_id or 449
+    return yahoo_mod.fetch_league_teams(
+        league_id=config.league_id_external,
+        game_code=config.game_code or "nfl",
+        game_id=game_id,
+        consumer_key=config.consumer_key,
+        consumer_secret=config.consumer_secret,
+        token_json=token_json,
+    )
+
+
+@router.post("/draft/{token}/admin/keepers/yahoo-config")
+async def save_yahoo_config(
+    token: str, body: YahooConfigIn, db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    config = _get_yahoo_config(db, league)
+    if config is None:
+        config = YahooConfig(league_id=league.id)
+        db.add(config)
+    if body.league_id_external:
+        config.league_id_external = body.league_id_external
+    if body.game_id is not None:
+        config.game_id = body.game_id
+    if body.game_code:
+        config.game_code = body.game_code
+    if body.season_id:
+        config.season_id = body.season_id
+    config.week = body.week
+    if body.consumer_key:
+        config.consumer_key = body.consumer_key
+    if body.consumer_secret:
+        config.consumer_secret = body.consumer_secret
+    _commit(db)
+
+    teams_fetched = False
+    fetched_teams: list[str] = []
+    warning: str | None = None
+
+    token_json = config.access_token_json or {}
+    if token_json.get("access_token") and config.league_id_external and config.consumer_key and config.consumer_secret:
+        try:
+            fetched_teams = await asyncio.to_thread(_fetch_teams_for_config, db, config)
+            ws = _get_workspace(league)
+            ws["yahoo_teams"] = fetched_teams
+            _save_workspace(db, league, ws)
+            teams_fetched = True
+        except Exception as exc:
+            warning = f"Config saved, but testing Yahoo connection failed: {exc}"
+
+    return {
+        "ok": True,
+        "yahoo": _masked_yahoo(config),
+        "teams_fetched": teams_fetched,
+        "teams": fetched_teams,
+        "warning": warning,
+    }
+
+
+@router.post("/draft/{token}/admin/keepers/yahoo/authorize")
+def yahoo_authorize(token: str, db: Session = Depends(get_db)):
+    league = _get_league(db, token)
+    config = _get_yahoo_config(db, league)
+    if config is None or not config.consumer_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Set a Yahoo consumer key first",
+        )
+    return {"ok": True, "authorization_url": yahoo_mod.authorization_url(config.consumer_key)}
+
+
+@router.post("/draft/{token}/admin/keepers/yahoo/callback")
+async def yahoo_callback(
+    token: str, body: YahooCodeIn, db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    config = _get_yahoo_config(db, league)
+    if config is None or not (config.consumer_key and config.consumer_secret):
+        raise HTTPException(
+            status_code=400,
+            detail="Yahoo consumer key/secret not configured",
+        )
+    try:
+        token_body = yahoo_mod.exchange_code(
+            config.consumer_key, config.consumer_secret, body.code
+        )
+    except YahooError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    config.access_token_json = yahoo_mod.build_token_json(
+        config.consumer_key, config.consumer_secret, token_body
+    )
+    _commit(db)
+
+    teams_fetched = False
+    fetched_teams: list[str] = []
+    warning: str | None = None
+    if config.league_id_external:
+        try:
+            fetched_teams = await asyncio.to_thread(_fetch_teams_for_config, db, config)
+            ws = _get_workspace(league)
+            ws["yahoo_teams"] = fetched_teams
+            _save_workspace(db, league, ws)
+            teams_fetched = True
+        except Exception as exc:
+            warning = f"Authorized with Yahoo, but fetching team names failed: {exc}"
+
+    return {
+        "ok": True,
+        "yahoo": _masked_yahoo(config),
+        "teams_fetched": teams_fetched,
+        "teams": fetched_teams,
+        "warning": warning,
+    }
 
 
 @router.post("/draft/{token}/admin/keepers/fetch")
@@ -729,6 +784,39 @@ async def fetch_yahoo(token: str, db: Session = Depends(get_db)):
         "teams": list(rosters.keys()),
         "player_count": sum(len(rows) for rows in rosters.values()),
     }
+
+
+@router.post("/draft/{token}/admin/keepers/yahoo/teams")
+async def yahoo_teams(token: str, db: Session = Depends(get_db)):
+    """Test the Yahoo config/token and store the league team names.
+
+    Lets the commissioner map Yahoo teams to draft teams before any roster
+    fetch. A success proves the consumer key/secret + OAuth token + league
+    ID are all valid.
+    """
+    league = _get_league(db, token)
+    config = _get_yahoo_config(db, league)
+    if config is None or not config.league_id_external:
+        raise HTTPException(
+            status_code=400,
+            detail="Set the Yahoo league ID first",
+        )
+    try:
+        names = await asyncio.to_thread(_fetch_teams_for_config, db, config)
+    except YahooError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Yahoo fetch failed: {exc}",
+        )
+
+    ws = _get_workspace(league)
+    ws["yahoo_teams"] = names
+    ws.pop("preview", None)
+    ws.pop("preview_warnings", None)
+    _save_workspace(db, league, ws)
+    return {"ok": True, "teams": names, "count": len(names)}
 
 
 @router.delete("/draft/{token}/admin/keepers/workspace")

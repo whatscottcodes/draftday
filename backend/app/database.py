@@ -38,6 +38,11 @@ _MIGRATIONS = [
         "keeper_workspace",
         {"sqlite": "keeper_workspace JSON", "postgresql": "keeper_workspace JSONB"},
     ),
+    (
+        "yahoo_configs",
+        "week",
+        {"sqlite": "week INTEGER", "postgresql": "week INTEGER"},
+    ),
 ]
 
 

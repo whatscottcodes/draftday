@@ -63,6 +63,13 @@ export default function KeeperAdminPage({
             draft_name: item.draft_name,
             yahoo_name: item.yahoo_name,
           };
+        } else {
+          if (!m[item.team_id].draft_name && item.draft_name) {
+            m[item.team_id].draft_name = item.draft_name;
+          }
+          if (!m[item.team_id].yahoo_name && item.yahoo_name) {
+            m[item.team_id].yahoo_name = item.yahoo_name;
+          }
         }
       }
       setMappings(m);
@@ -183,7 +190,13 @@ export default function KeeperAdminPage({
       "Saving Yahoo config…",
     );
     if (body) {
-      flash(true, "Yahoo config saved");
+      if (body.teams_fetched && body.teams?.length) {
+        flash(true, `Yahoo config saved & verified — pulled ${body.teams.length} team names`);
+      } else if (body.warning) {
+        flash(false, body.warning);
+      } else {
+        flash(true, "Yahoo config saved");
+      }
       setYKey("");
       setYSecret("");
       await loadSetup();
@@ -204,12 +217,30 @@ export default function KeeperAdminPage({
     const body = await postJson(
       `/api/draft/${token}/admin/keepers/yahoo/callback`,
       { code: yCode },
-      "Authorizing…",
+      "Authorizing & fetching team names…",
     );
     if (body) {
-      flash(true, "Yahoo authorized");
+      if (body.teams_fetched && body.teams?.length) {
+        flash(true, `Yahoo authorized & verified — pulled ${body.teams.length} team names`);
+      } else if (body.warning) {
+        flash(false, body.warning);
+      } else {
+        flash(true, "Yahoo authorized");
+      }
       setYCode("");
       setAuthUrl(null);
+      await loadSetup();
+    }
+  }
+
+  async function fetchTeamNames() {
+    const body = await postJson(
+      `/api/draft/${token}/admin/keepers/yahoo/teams`,
+      {},
+      "Testing Yahoo connection & fetching team names…",
+    );
+    if (body) {
+      flash(true, `Yahoo connection verified — ${body.count} teams: ${(body.teams || []).join(", ")}`);
       await loadSetup();
     }
   }
@@ -573,7 +604,10 @@ export default function KeeperAdminPage({
               </button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <button className="btn-primary" onClick={fetchRosters} disabled={!!busy}>
+              <button className="btn-secondary" onClick={fetchTeamNames} disabled={!setup.yahoo.has_token || !!busy}>
+                Test connection &amp; refresh teams
+              </button>
+              <button className="btn-primary" onClick={fetchRosters} disabled={!setup.yahoo.has_token || !!busy}>
                 Fetch rosters from Yahoo
               </button>
               <input
@@ -590,10 +624,10 @@ export default function KeeperAdminPage({
             </div>
           </div>
         )}
-        <p className="mt-3 text-xs text-slate-500">
-          {setup.rosters.player_count > 0
-            ? `${setup.rosters.player_count} players across ${setup.rosters.teams.length} teams: ${setup.rosters.teams.join(", ")}`
-            : "No roster data yet."}
+        <p className="mt-3 text-xs text-slate-400">
+          {setup.rosters.teams.length > 0
+            ? `${setup.rosters.teams.length} Yahoo teams found: ${setup.rosters.teams.join(", ")}${setup.rosters.player_count > 0 ? ` (${setup.rosters.player_count} rostered players loaded)` : " (rosters not loaded yet)"}`
+            : "No Yahoo team or roster data loaded yet."}
         </p>
       </section>
 

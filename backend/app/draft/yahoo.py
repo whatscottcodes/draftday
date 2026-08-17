@@ -105,6 +105,39 @@ def _player_row(player, was_added: bool = False) -> dict:
     }
 
 
+def fetch_league_teams(
+    *,
+    league_id: str,
+    game_code: str,
+    game_id: int,
+    consumer_key: str,
+    consumer_secret: str,
+    token_json: dict,
+) -> list[str]:
+    """Fetch Yahoo league team names only (lightweight connectivity test)."""
+    try:
+        from yfpy.query import YahooFantasySportsQuery
+    except ImportError as exc:  # pragma: no cover - depends on optional dep
+        raise YahooError("yfpy is not installed in the backend environment") from exc
+
+    query = YahooFantasySportsQuery(
+        league_id=str(league_id),
+        game_code=game_code,
+        game_id=game_id,
+        yahoo_consumer_key=consumer_key,
+        yahoo_consumer_secret=consumer_secret,
+        yahoo_access_token_json=token_json,
+        env_var_fallback=False,
+    )
+    teams = query.get_league_teams() or []
+    names: list[str] = []
+    for team in teams:
+        name = str(_attr(team, "name", "")).strip()
+        if name:
+            names.append(name)
+    return names
+
+
 def fetch_snapshot(
     *,
     league_id: str,
