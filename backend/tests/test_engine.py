@@ -13,8 +13,34 @@ from app.draft.engine import (
     undo_last_pick,
     update_draft_slot_owner,
 )
+from app.draft.state import assign_roster
 from app.draft.validation import start_draft
 from app.models import DraftSlot, Pick, PickType
+
+
+def test_assign_roster_flex_and_bench():
+    slots = ["QB1", "QB2", "RB1", "RB2", "WR1", "WR2", "TE", "Flex", "DST", "K"]
+    players = [
+        {"player_id": 1, "player_name": "P1", "position": "QB"},
+        {"player_id": 2, "player_name": "P2", "position": "RB"},
+        {"player_id": 3, "player_name": "P3", "position": "WR"},
+        {"player_id": 4, "player_name": "P4", "position": "RB"},
+        {"player_id": 5, "player_name": "P5", "position": "WR"},
+        {"player_id": 6, "player_name": "P6", "position": "TE"},
+        {"player_id": 7, "player_name": "P7", "position": "RB"},
+    ]
+    roster, bench = assign_roster(slots, players)
+    by_slot = {r["slot"]: (r["player"] or {}).get("player_name") for r in roster}
+    assert by_slot["QB1"] == "P1"
+    assert by_slot["QB2"] is None
+    assert by_slot["RB1"] == "P2"
+    assert by_slot["RB2"] == "P4"
+    assert by_slot["WR1"] == "P3"
+    assert by_slot["WR2"] == "P5"
+    assert by_slot["Flex"] == "P7"
+    assert by_slot["DST"] is None
+    assert by_slot["K"] is None
+    assert bench == []
 
 
 def test_generate_draft_slots_snake_order():

@@ -20,6 +20,7 @@ from ..database import get_db
 from ..draft import engine, state as state_builder, validation
 from ..draft.engine import DraftError
 from ..models import (
+    DEFAULT_ROSTER_SLOTS,
     DraftEvent,
     DraftSlot,
     Keeper,
@@ -39,6 +40,7 @@ from ..schemas import (
     PickIn,
     PlayerImport,
     PlayerImportRow,
+    RosterUpdate,
     SlotUpdate,
     TeamPickIn,
     TeamState,
@@ -74,6 +76,34 @@ def _commit(db: Session) -> None:
 # ---------------------------------------------------------------- setup
 
 
+@router.get("/leagues")
+def list_leagues(db: Session = Depends(get_db)):
+    leagues = db.scalars(select(League).order_by(League.created_at.desc()))
+    return [
+        {
+            "id": l.id,
+            "name": l.name,
+            "season": l.season,
+            "status": l.status,
+            "num_teams": l.num_teams,
+            "num_rounds": l.num_rounds,
+            "access_token": l.access_token,
+            "created_at": l.created_at.isoformat() if l.created_at else None,
+        }
+        for l in leagues
+    ]
+
+
+@router.delete("/draft/{token}/admin/delete")
+async def delete_league(
+    token: str, db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    engine.delete_league(db, league)
+    _commit(db)
+    return {"ok": True}
+
+
 @router.post("/leagues", response_model=LeagueCreated)
 def create_league(body: LeagueCreate, db: Session = Depends(get_db)):
     if len(body.teams) != body.num_teams:
@@ -88,6 +118,7 @@ def create_league(body: LeagueCreate, db: Session = Depends(get_db)):
         num_rounds=body.num_rounds,
         status=LeagueStatus.SETUP,
         access_token=secrets.token_urlsafe(12),
+        roster_slots=DEFAULT_ROSTER_SLOTS,
     )
     db.add(league)
     db.flush()
@@ -173,6 +204,7 @@ def admin_config(token: str, db: Session = Depends(get_db)):
             "num_teams": league.num_teams,
             "num_rounds": league.num_rounds,
             "status": league.status,
+            "roster_slots": league.roster_slots or DEFAULT_ROSTER_SLOTS,
         },
         "teams": [
             {
@@ -247,6 +279,25 @@ async def update_slot(
     _commit(db)
     await _broadcast(league)
     return {"ok": True}
+
+
+@router.put("/draft/{token}/admin/roster")
+async def update_roster(
+    token: str, body: RosterUpdate, db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    if league.status not in (LeagueStatus.SETUP, LeagueStatus.READY):
+        raise HTTPException(
+            status_code=400,
+            detail="Roster slots can only be changed before the draft starts",
+        )
+    slots = [s.strip() for s in body.slots if s.strip()]
+    if not slots or len(slots) > 30:
+        raise HTTPException(status_code=400, detail="Provide between 1 and 30 slots")
+    league.roster_slots = slots
+    _commit(db)
+    await _broadcast(league)
+    return {"ok": True, "roster_slots": slots}
 
 
 @router.post("/draft/{token}/admin/keepers")
@@ -602,6 +653,12 @@ def team_state(token: str, team_token: str, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     team = _get_team(db, league, team_token)
     return state_builder.build_team_state(db, league, team)
+
+
+@router.get("/draft/{token}/rosters")
+def team_rosters(token: str, db: Session = Depends(get_db)):
+    league = _get_league(db, token)
+    return state_builder.build_rosters(db, league)
 
 
 @router.post("/draft/{token}/team/{team_token}/picks")

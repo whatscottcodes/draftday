@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiJson } from "@/lib/api";
+import type { LeagueSummary, LeagueStatus } from "@/lib/types";
 
 interface TeamRow {
   name: string;
@@ -22,6 +23,13 @@ export default function Home() {
   const [teamNames, setTeamNames] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedLeague | null>(null);
+  const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
+
+  useEffect(() => {
+    apiJson<LeagueSummary[]>("/api/leagues")
+      .then(setLeagues)
+      .catch(() => setLeagues([]));
+  }, []);
 
   const teamRows: TeamRow[] = useMemo(
     () =>
@@ -48,6 +56,16 @@ export default function Home() {
       setCreated(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create league");
+    }
+  }
+
+  async function remove(id: number, accessToken: string) {
+    if (!window.confirm("Delete this draft? This cannot be undone.")) return;
+    try {
+      await apiJson(`/api/draft/${accessToken}/admin/delete`, { method: "DELETE" });
+      setLeagues((prev) => prev.filter((l) => l.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete draft");
     }
   }
 
@@ -161,8 +179,59 @@ export default function Home() {
             Create league
           </button>
         </div>
+
+        {leagues.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-bold text-slate-300">Existing drafts</h2>
+            {leagues.map((l) => (
+              <div
+                key={l.id}
+                className="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold truncate">{l.name}</span>
+                    <StatusBadge status={l.status} />
+                  </div>
+                  <p className="text-sm text-slate-400">
+                    {l.season} · {l.num_teams} teams · {l.num_rounds} rounds
+                  </p>
+                </div>
+                <a
+                  href={`/draft/${l.access_token}/admin`}
+                  className="text-emerald-400 hover:underline text-sm shrink-0"
+                >
+                  Open
+                </a>
+                <button
+                  onClick={() => remove(l.id, l.access_token)}
+                  className="text-red-400 hover:text-red-300 text-sm shrink-0"
+                  title="Delete draft"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </main>
+  );
+}
+
+function StatusBadge({ status }: { status: LeagueStatus }) {
+  const color =
+    status === "LIVE"
+      ? "bg-emerald-500/20 text-emerald-300"
+      : status === "COMPLETED"
+        ? "bg-sky-500/20 text-sky-300"
+        : "bg-slate-500/20 text-slate-300";
+  return (
+    <span
+      className={`text-xs px-2 py-0.5 rounded-full border border-slate-700 ${color}`}
+    >
+      {status}
+    </span>
   );
 }
 

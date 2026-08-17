@@ -52,6 +52,20 @@ export default function DisplayPage({
             {state.status === "READY" && "Ready"}
             {!connected && " · reconnecting…"}
           </p>
+          <div className="flex gap-3 text-sm text-slate-400 mt-1">
+            <a
+              href={`/draft/${token}/admin`}
+              className="text-emerald-400 hover:underline"
+            >
+              ← Commissioner
+            </a>
+            <a
+              href={`/draft/${token}/rosters`}
+              className="text-emerald-400 hover:underline"
+            >
+              Rosters
+            </a>
+          </div>
         </div>
         {onClock && state.status === "LIVE" && (
           <div className="text-right">

@@ -28,6 +28,11 @@ def get_db():
 
 _MIGRATIONS = [
     ("players", "extra", {"sqlite": "extra JSON", "postgresql": "extra JSONB"}),
+    (
+        "leagues",
+        "roster_slots",
+        {"sqlite": "roster_slots JSON", "postgresql": "roster_slots JSONB"},
+    ),
 ]
 
 

@@ -1,10 +1,58 @@
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import DraftSlot, Keeper, League, Pick, Team
+from ..models import DEFAULT_ROSTER_SLOTS, DraftSlot, Keeper, League, Pick, Team
 from . import engine
+
+FLEX_POSITIONS = {"RB", "WR", "TE"}
+DEF_POSITIONS = {"DST", "DEF"}
+
+
+def _slot_position(label: str) -> str:
+    return re.sub(r"\d+$", "", (label or "").strip()).upper()
+
+
+def _roster_player_dict(pick: Pick) -> dict:
+    return {
+        "player_id": pick.player_id,
+        "player_name": pick.player.name,
+        "position": pick.player.position,
+        "nfl_team": pick.player.nfl_team,
+        "pick_number": pick.slot.pick_number,
+        "round": pick.slot.round,
+        "pick_type": pick.pick_type,
+    }
+
+
+def assign_roster(
+    slots: list[str], players: list[dict]
+) -> tuple[list[dict], list[dict]]:
+    """Assign drafted players to the configured roster slots.
+
+    Players are taken in pick order; a specific slot matches by position,
+    a Flex slot takes the next RB/WR/TE, and everyone left over goes to
+    the bench. Returns (roster_by_slot, bench).
+    """
+    roster: list[dict] = []
+    remaining = list(players)
+    for label in slots:
+        base = _slot_position(label)
+        entry: dict = {"slot": label, "position": base, "player": None}
+        if base in ("FLEX", "F"):
+            candidates = [p for p in remaining if p["position"] in FLEX_POSITIONS]
+        elif base in DEF_POSITIONS:
+            candidates = [p for p in remaining if p["position"] in DEF_POSITIONS]
+        else:
+            candidates = [p for p in remaining if p["position"] == base]
+        if candidates:
+            entry["player"] = candidates[0]
+            remaining.remove(candidates[0])
+        roster.append(entry)
+    return roster, remaining
 
 
 def _slot_dict(db: Session, slot: DraftSlot, num_teams: int) -> dict:
@@ -136,18 +184,9 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
             .order_by(DraftSlot.pick_number)
         )
     )
-    roster = [
-        {
-            "player_id": p.player_id,
-            "player_name": p.player.name,
-            "position": p.player.position,
-            "nfl_team": p.player.nfl_team,
-            "pick_number": p.slot.pick_number,
-            "round": p.slot.round,
-            "pick_type": p.pick_type,
-        }
-        for p in picks
-    ]
+    roster = [_roster_player_dict(p) for p in picks]
+    roster_slots = league.roster_slots or DEFAULT_ROSTER_SLOTS
+    roster_by_slot, bench = assign_roster(roster_slots, roster)
     keepers = [
         {
             "keeper_id": k.id,
@@ -247,10 +286,58 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
         "current_slot": current,
         "my_next_slot": my_next,
         "roster": roster,
+        "roster_slots": roster_slots,
+        "roster_by_slot": roster_by_slot,
+        "bench": bench,
         "keepers": keepers,
         "recent_picks": state["recent_picks"],
         "upcoming_picks": upcoming,
         "next_picks": next_picks,
         "players": players,
         "available_count": state["available_count"],
+    }
+
+
+def build_rosters(db: Session, league: League) -> dict:
+    """Per-team roster layout for every team in the league."""
+    teams = sorted(
+        db.scalars(select(Team).where(Team.league_id == league.id)),
+        key=lambda t: t.draft_position,
+    )
+    picks = list(
+        db.scalars(
+            select(Pick)
+            .where(Pick.league_id == league.id)
+            .join(DraftSlot)
+            .order_by(DraftSlot.pick_number)
+        )
+    )
+    picks_by_team: dict[int, list[Pick]] = {}
+    for p in picks:
+        picks_by_team.setdefault(p.team_id, []).append(p)
+
+    roster_slots = league.roster_slots or DEFAULT_ROSTER_SLOTS
+    teams_out = []
+    for team in teams:
+        roster = [_roster_player_dict(p) for p in picks_by_team.get(team.id, [])]
+        roster_by_slot, bench = assign_roster(roster_slots, roster)
+        teams_out.append(
+            {
+                "team_id": team.id,
+                "team_name": team.name,
+                "draft_position": team.draft_position,
+                "roster": roster_by_slot,
+                "bench": bench,
+            }
+        )
+
+    return {
+        "league_id": league.id,
+        "league_name": league.name,
+        "season": league.season,
+        "status": league.status,
+        "num_teams": league.num_teams,
+        "num_rounds": league.num_rounds,
+        "roster_slots": roster_slots,
+        "teams": teams_out,
     }

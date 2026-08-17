@@ -30,6 +30,20 @@ class PickType:
     COMMISSIONER = "commissioner"
 
 
+DEFAULT_ROSTER_SLOTS = [
+    "QB1",
+    "QB2",
+    "RB1",
+    "RB2",
+    "WR1",
+    "WR2",
+    "TE",
+    "Flex",
+    "DST",
+    "K",
+]
+
+
 class League(Base):
     __tablename__ = "leagues"
 
@@ -40,6 +54,7 @@ class League(Base):
     num_rounds: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(20), default=LeagueStatus.SETUP)
     access_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    roster_slots: Mapped[list] = mapped_column(JSON, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     teams: Mapped[list["Team"]] = relationship(

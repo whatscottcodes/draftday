@@ -43,6 +43,10 @@ class SlotUpdate(BaseModel):
     drafting_team_id: int
 
 
+class RosterUpdate(BaseModel):
+    slots: list[str]
+
+
 class KeeperIn(BaseModel):
     team_id: int
     player_id: int
@@ -144,5 +148,8 @@ class TeamState(BaseModel):
     recent_picks: list[dict] = []
     upcoming_picks: list[dict] = []
     next_picks: list[dict] = []
+    roster_slots: list[str] = []
+    roster_by_slot: list[dict] = []
+    bench: list[dict] = []
     players: list[dict] = []
     available_count: int = 0

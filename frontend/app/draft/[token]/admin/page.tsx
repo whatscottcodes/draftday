@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { apiJson, connectDraftSocket } from "@/lib/api";
 import type { AdminConfig, DraftState } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
@@ -22,7 +23,12 @@ export default function AdminPage({
   const [keeperRound, setKeeperRound] = useState(1);
   const [csvText, setCsvText] = useState("");
   const [exported, setExported] = useState<string | null>(null);
+  const [rosterSlotsText, setRosterSlotsText] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (config) setRosterSlotsText(config.league.roster_slots.join("\n"));
+  }, [config]);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -157,6 +163,27 @@ export default function AdminPage({
     setExported(JSON.stringify(data, null, 2));
   }
 
+  async function saveRosterSlots() {
+    const slots = rosterSlotsText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!slots.length) return;
+    const ok = await action("PUT", `/api/draft/${token}/admin/roster`, { slots });
+    if (ok) flash(true, "Roster slots saved");
+  }
+
+  async function removeDraft() {
+    if (
+      !window.confirm(
+        "Delete this entire draft? This cannot be undone.",
+      )
+    )
+      return;
+    const ok = await action("DELETE", `/api/draft/${token}/admin/delete`);
+    if (ok) window.location.href = "/";
+  }
+
   async function start() {
     const ok = await action("POST", `/api/draft/${token}/admin/start`);
     if (ok) flash(true, "Draft started");
@@ -186,7 +213,10 @@ export default function AdminPage({
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6 max-w-6xl mx-auto space-y-8">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black">
+          <Link href="/" className="text-sm text-slate-400 hover:text-emerald-400">
+            ← All drafts
+          </Link>
+          <h1 className="text-3xl font-black mt-1">
             {league.name}{" "}
             <span className="text-slate-500 font-normal text-xl">
               · {league.season}
@@ -229,6 +259,9 @@ export default function AdminPage({
               Validate & start
             </button>
           )}
+          <button className="btn-danger" onClick={removeDraft}>
+            Delete draft
+          </button>
         </div>
       </header>
 
@@ -288,6 +321,75 @@ export default function AdminPage({
         )}
       </section>
 
+      {/* Roster slots */}
+      {editable && (
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
+            Roster slots
+          </h2>
+          <p className="text-xs text-slate-500 mb-2">
+            One slot per line. Use Flex for a RB/WR/TE slot. Players that do not
+            fit a slot go to the bench.
+          </p>
+          <textarea
+            className="input h-32 font-mono text-xs"
+            value={rosterSlotsText}
+            onChange={(e) => setRosterSlotsText(e.target.value)}
+          />
+          <button
+            className="btn-secondary mt-2"
+            disabled={!rosterSlotsText.trim()}
+            onClick={saveRosterSlots}
+          >
+            Save roster slots
+          </button>
+        </section>
+      )}
+
+      {/* Commissioner override pick */}
+      {league.status === "LIVE" && state && (
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
+            Commissioner override
+          </h2>
+          <OverridePick
+            state={state}
+            onPick={(slotId, playerId) =>
+              makePickForCurrent(slotId, playerId)
+            }
+          />
+        </section>
+      )}
+
+      {/* Live board preview */}
+      {state && (
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
+            Draft history
+          </h2>
+          {state.recent_picks.length === 0 && (
+            <p className="text-sm text-slate-500">No picks yet.</p>
+          )}
+          <ul className="space-y-1 text-sm">
+            {state.recent_picks.map((p) => (
+              <li key={p.id} className="text-slate-400">
+                <span className="text-slate-600">#{p.pick_number}</span>{" "}
+                <span className="text-slate-100">{p.player_name}</span>{" "}
+                <PositionBadge position={p.position} size="xs" />{" "}
+                <span className="text-slate-500">
+                  — {p.team_name}
+                  {p.pick_type !== "live" && (
+                    <span className="badge bg-amber-500/20 text-amber-300 ml-1">
+                      {p.pick_type}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* Team access links */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
         <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
@@ -315,6 +417,13 @@ export default function AdminPage({
             className="text-emerald-400 underline"
           >
             /draft/{token}/display
+          </a>{" "}
+          · Rosters:{" "}
+          <a
+            href={`/draft/${token}/rosters`}
+            className="text-emerald-400 underline"
+          >
+            /draft/{token}/rosters
           </a>
         </p>
       </section>
@@ -536,50 +645,6 @@ export default function AdminPage({
           </details>
         )}
       </section>
-
-      {/* Commissioner override pick */}
-      {league.status === "LIVE" && state && (
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-            Commissioner override
-          </h2>
-          <OverridePick
-            state={state}
-            onPick={(slotId, playerId) =>
-              makePickForCurrent(slotId, playerId)
-            }
-          />
-        </section>
-      )}
-
-      {/* Live board preview */}
-      {state && (
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-            Draft history
-          </h2>
-          {state.recent_picks.length === 0 && (
-            <p className="text-sm text-slate-500">No picks yet.</p>
-          )}
-          <ul className="space-y-1 text-sm">
-            {state.recent_picks.map((p) => (
-              <li key={p.id} className="text-slate-400">
-                <span className="text-slate-600">#{p.pick_number}</span>{" "}
-                <span className="text-slate-100">{p.player_name}</span>{" "}
-                <PositionBadge position={p.position} size="xs" />{" "}
-                <span className="text-slate-500">
-                  — {p.team_name}
-                  {p.pick_type !== "live" && (
-                    <span className="badge bg-amber-500/20 text-amber-300 ml-1">
-                      {p.pick_type}
-                    </span>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       {/* Export */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">

@@ -31,6 +31,15 @@ export default function TeamPage({
   const [sort, setSort] = useState<SortKey>("rank");
   const [picking, setPicking] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [view, setView] = useState<"roster" | "available">("roster");
+  const [viewInitialized, setViewInitialized] = useState(false);
+
+  useEffect(() => {
+    if (state && !viewInitialized) {
+      if (state.on_the_clock) setView("available");
+      setViewInitialized(true);
+    }
+  }, [state, viewInitialized]);
 
   const fetchTeam = useCallback(async () => {
     try {
@@ -139,6 +148,20 @@ export default function TeamPage({
             </div>
           )}
         </div>
+        <div className="flex gap-3 text-xs text-slate-400 mt-2">
+          <a
+            href={`/draft/${token}/display`}
+            className="hover:text-emerald-400"
+          >
+            ← TV board
+          </a>
+          <a
+            href={`/draft/${token}/rosters`}
+            className="hover:text-emerald-400"
+          >
+            All rosters
+          </a>
+        </div>
       </header>
 
       {state.status === "COMPLETED" && (
@@ -199,126 +222,189 @@ export default function TeamPage({
         </section>
       )}
 
-      {/* Roster + keepers */}
-      <section className="px-4 py-3 space-y-2">
-        <h2 className="text-xs uppercase tracking-widest text-slate-500">
-          My roster ({state.roster.length})
-        </h2>
-        {state.roster.length === 0 && state.keepers.length === 0 && (
-          <p className="text-sm text-slate-500">No players yet.</p>
-        )}
-        <div className="flex flex-wrap gap-1.5">
-          {state.roster.map((p) => (
-            <span
-              key={p.player_id}
-              className="badge bg-slate-800 text-slate-200 border border-slate-700"
-            >
-              {p.player_name}{" "}
-              <PositionBadge position={p.position} size="xs" />{" "}
-              <span className="text-slate-500">
-                R{p.round}
-                {p.pick_type === "keeper" ? " · K" : ""}
-              </span>
-            </span>
-          ))}
-          {state.keepers
-            .filter((k) => !state.roster.some((r) => r.player_id === k.player_id))
-            .map((k) => (
-              <span
-                key={k.keeper_id}
-                className="badge bg-amber-900/40 text-amber-200 border border-amber-700"
-              >
-                {k.player_name}{" "}
-                <span className="text-amber-300/70">K·R{k.round}</span>
-              </span>
-            ))}
-        </div>
-        {state.my_next_slot && (
-          <p className="text-sm text-slate-400">
-            Next pick:{" "}
-            <span className="text-slate-200">
-              Round {state.my_next_slot.round} · Pick{" "}
-              {state.my_next_slot.pick_number}
-            </span>
-          </p>
-        )}
-      </section>
-
-      {/* Player search */}
-      <section className="px-4 py-3 space-y-3">
-        <h2 className="text-xs uppercase tracking-widest text-slate-500">
-          Available players ({state.available_count})
-        </h2>
-        <div className="flex gap-2">
-          <input
-            className="input"
-            placeholder="Search players…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <select
-            className="input w-24"
-            value={position}
-            onChange={(e) => setPosition(e.target.value as Position)}
+      {/* Roster / Available tabs */}
+      <div className="sticky top-0 z-10 flex border-b border-slate-800 bg-slate-950">
+        {(["roster", "available"] as const).map((v) => (
+          <button
+            key={v}
+            className={`flex-1 py-2.5 text-sm font-semibold uppercase tracking-widest ${
+              view === v
+                ? "text-emerald-400 border-b-2 border-emerald-400"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+            onClick={() => setView(v)}
           >
-            {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-          <select
-            className="input w-24"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-          >
-            <option value="rank">Rank</option>
-            <option value="name">Name</option>
-          </select>
-        </div>
+            {v === "roster" ? "My Roster" : "Available"}
+          </button>
+        ))}
+      </div>
 
-        <ul className="space-y-1.5">
-          {filtered.map((p) => (
-            <li
-              key={p.player_id}
-              className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"
-            >
-              <span className="w-8 text-right text-slate-500 text-sm">
-                {p.rank ?? "—"}
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold truncate">{p.name}</div>
-                <div className="flex items-center gap-1 text-xs text-slate-500">
-                  <PositionBadge position={p.position} size="xs" />
-                  <span>
-                    {p.nfl_team ? ` · ${p.nfl_team}` : ""}
-                    {p.bye_week ? ` · BYE ${p.bye_week}` : ""}
-                    {p.tier ? ` · Tier ${p.tier}` : ""}
-                  </span>
-                </div>
-              </div>
-              {state.on_the_clock ? (
-                <button
-                  className="btn-primary"
-                  disabled={picking === p.player_id}
-                  onClick={() => submitPick(p.player_id)}
-                >
-                  {picking === p.player_id ? "…" : "Draft"}
-                </button>
-              ) : (
-                <span className="text-xs text-slate-600">
-                  {state.status === "LIVE" ? "waiting" : "—"}
-                </span>
-              )}
-            </li>
-          ))}
-          {filtered.length === 0 && (
-            <li className="text-sm text-slate-500 py-4 text-center">
-              No players match.
-            </li>
+      {view === "roster" && (
+        <section className="px-4 py-3 space-y-3">
+          <h2 className="text-xs uppercase tracking-widest text-slate-500">
+            Starters
+          </h2>
+          {state.roster_by_slot.length === 0 && state.keepers.length === 0 && (
+            <p className="text-sm text-slate-500">No players yet.</p>
           )}
-        </ul>
-      </section>
+          <div className="space-y-1.5">
+            {state.roster_by_slot.map((r) => (
+              <div
+                key={r.slot}
+                className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"
+              >
+                <span className="w-12 text-xs font-semibold text-slate-400">
+                  {r.slot}
+                </span>
+                <PositionBadge position={r.position} size="xs" />
+                {r.player ? (
+                  <span className="flex-1 font-semibold truncate">
+                    {r.player.player_name}
+                    <span className="text-xs text-slate-500 ml-1">
+                      {r.player.nfl_team ? ` · ${r.player.nfl_team}` : ""} · R
+                      {r.player.round}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="flex-1 text-sm text-slate-600">Empty</span>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {state.bench.length > 0 && (
+            <>
+              <h2 className="text-xs uppercase tracking-widest text-slate-500">
+                Bench ({state.bench.length})
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                {state.bench.map((p) => (
+                  <span
+                    key={p.player_id}
+                    className="badge bg-slate-800 text-slate-200 border border-slate-700"
+                  >
+                    {p.player_name}{" "}
+                    <PositionBadge position={p.position} size="xs" />{" "}
+                    <span className="text-slate-500">R{p.round}</span>
+                  </span>
+                ))}
+              </div>
+            </>
+          )}
+
+          {state.keepers.filter(
+            (k) => !state.roster.some((r) => r.player_id === k.player_id),
+          ).length > 0 && (
+            <>
+              <h2 className="text-xs uppercase tracking-widest text-slate-500">
+                Keepers
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                {state.keepers
+                  .filter(
+                    (k) => !state.roster.some((r) => r.player_id === k.player_id),
+                  )
+                  .map((k) => (
+                    <span
+                      key={k.keeper_id}
+                      className="badge bg-amber-900/40 text-amber-200 border border-amber-700"
+                    >
+                      {k.player_name}{" "}
+                      <span className="text-amber-300/70">K·R{k.round}</span>
+                    </span>
+                  ))}
+              </div>
+            </>
+          )}
+
+          {state.my_next_slot && (
+            <p className="text-sm text-slate-400">
+              Next pick:{" "}
+              <span className="text-slate-200">
+                Round {state.my_next_slot.round} · Pick{" "}
+                {state.my_next_slot.pick_number}
+              </span>
+            </p>
+          )}
+        </section>
+      )}
+
+      {view === "available" && (
+        <section className="px-4 py-3 space-y-3">
+          <h2 className="text-xs uppercase tracking-widest text-slate-500">
+            Available players ({state.available_count})
+          </h2>
+          <div className="flex gap-2">
+            <input
+              className="input"
+              placeholder="Search players…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <select
+              className="input w-24"
+              value={position}
+              onChange={(e) => setPosition(e.target.value as Position)}
+            >
+              {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input w-24"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+            >
+              <option value="rank">Rank</option>
+              <option value="name">Name</option>
+            </select>
+          </div>
+
+          <ul className="space-y-1.5">
+            {filtered.map((p) => (
+              <li
+                key={p.player_id}
+                className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"
+              >
+                <span className="w-8 text-right text-slate-500 text-sm">
+                  {p.rank ?? "—"}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate">{p.name}</div>
+                  <div className="flex items-center gap-1 text-xs text-slate-500">
+                    <PositionBadge position={p.position} size="xs" />
+                    <span>
+                      {p.nfl_team ? ` · ${p.nfl_team}` : ""}
+                      {p.bye_week ? ` · BYE ${p.bye_week}` : ""}
+                      {p.tier ? ` · Tier ${p.tier}` : ""}
+                    </span>
+                  </div>
+                </div>
+                {state.on_the_clock ? (
+                  <button
+                    className="btn-primary"
+                    disabled={picking === p.player_id}
+                    onClick={() => submitPick(p.player_id)}
+                  >
+                    {picking === p.player_id ? "…" : "Draft"}
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-600">
+                    {state.status === "LIVE" ? "waiting" : "—"}
+                  </span>
+                )}
+              </li>
+            ))}
+            {filtered.length === 0 && (
+              <li className="text-sm text-slate-500 py-4 text-center">
+                No players match.
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
 
       {/* Recent picks */}
       {state.recent_picks.length > 0 && (

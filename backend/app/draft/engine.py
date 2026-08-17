@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..models import (
@@ -401,3 +401,16 @@ def export_results(db: Session, league: League) -> dict:
             for p in picks
         ],
     }
+
+
+def delete_league(db: Session, league: League) -> None:
+    """Delete a league and everything under it, children first."""
+    league_id = league.id
+    db.execute(delete(DraftEvent).where(DraftEvent.league_id == league_id))
+    db.execute(delete(Pick).where(Pick.league_id == league_id))
+    db.execute(delete(Keeper).where(Keeper.league_id == league_id))
+    db.execute(delete(Ranking).where(Ranking.league_id == league_id))
+    db.execute(delete(DraftSlot).where(DraftSlot.league_id == league_id))
+    db.execute(delete(Player).where(Player.league_id == league_id))
+    db.execute(delete(Team).where(Team.league_id == league_id))
+    db.delete(league)

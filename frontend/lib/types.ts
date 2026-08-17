@@ -77,6 +77,12 @@ export interface TeamRosterPlayer {
   pick_type: PickType;
 }
 
+export interface RosterSlotEntry {
+  slot: string;
+  position: string;
+  player: TeamRosterPlayer | null;
+}
+
 export interface NextPick {
   pick_number: number;
   round: number;
@@ -96,6 +102,9 @@ export interface TeamState {
   current_slot: BoardSlot | null;
   my_next_slot: BoardSlot | null;
   roster: TeamRosterPlayer[];
+  roster_slots: string[];
+  roster_by_slot: RosterSlotEntry[];
+  bench: TeamRosterPlayer[];
   keepers: {
     keeper_id: number;
     player_id: number;
@@ -125,6 +134,7 @@ export interface AdminConfig {
     num_teams: number;
     num_rounds: number;
     status: LeagueStatus;
+    roster_slots: string[];
   };
   teams: {
     id: number;
@@ -172,4 +182,34 @@ export interface AdminConfig {
     errors: ValidationIssue[];
     warnings: ValidationIssue[];
   };
+}
+
+export interface TeamRosterView {
+  team_id: number;
+  team_name: string;
+  draft_position: number;
+  roster: RosterSlotEntry[];
+  bench: TeamRosterPlayer[];
+}
+
+export interface RostersState {
+  league_id: number;
+  league_name: string;
+  season: string;
+  status: LeagueStatus;
+  num_teams: number;
+  num_rounds: number;
+  roster_slots: string[];
+  teams: TeamRosterView[];
+}
+
+export interface LeagueSummary {
+  id: number;
+  name: string;
+  season: string;
+  status: LeagueStatus;
+  num_teams: number;
+  num_rounds: number;
+  access_token: string;
+  created_at: string | null;
 }

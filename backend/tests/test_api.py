@@ -256,3 +256,101 @@ def test_fantasypros_position_rank_stripped(client):
     assert positions["Tyreek Hill"] == "WR"
     assert positions["Trey McBride"] == "TE"
     assert positions["Josh Allen"] == "QB"
+
+
+def test_league_list_and_default_roster_slots(client):
+    c, _ = client
+    data = _create_league(c)
+    leagues = c.get("/api/leagues").json()
+    assert any(l["id"] == data["id"] for l in leagues)
+    cfg = c.get(f"/api/draft/{data['access_token']}/admin/config").json()
+    assert cfg["league"]["roster_slots"] == [
+        "QB1", "QB2", "RB1", "RB2", "WR1", "WR2", "TE", "Flex", "DST", "K",
+    ]
+
+
+def test_update_roster_slots(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    resp = c.put(
+        f"/api/draft/{token}/admin/roster",
+        json={"slots": ["QB", "RB", "RB", "WR", "WR", "TE", "K"]},
+    )
+    assert resp.status_code == 200
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    assert cfg["league"]["roster_slots"] == ["QB", "RB", "RB", "WR", "WR", "TE", "K"]
+    c.post(f"/api/draft/{token}/admin/start")
+    resp = c.put(f"/api/draft/{token}/admin/roster", json={"slots": ["QB"]})
+    assert resp.status_code == 400
+
+
+def test_roster_by_slot_and_bench(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/csv",
+        files={
+            "file": (
+                "players.csv",
+                "player_id,name,position,nfl_team,rank,adp\n"
+                + "\n".join(
+                    f"p{i},Player {i},{pos},NFL,{i},{i}.0"
+                    for i, pos in enumerate(["QB", "RB", "WR", "RB", "WR", "TE"], 1)
+                ),
+                "text/csv",
+            )
+        },
+    )
+    assert resp.status_code == 200
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    by_name = {p["name"]: p for p in players}
+    c.post(f"/api/draft/{token}/admin/start")
+
+    state = c.get(f"/api/draft/{token}/team/{data['teams'][1]['access_token']}").json()
+    assert state["roster_slots"] == [
+        "QB1", "QB2", "RB1", "RB2", "WR1", "WR2", "TE", "Flex", "DST", "K",
+    ]
+
+    # Team 1 on the clock first; pick for them, then Team 2 picks an RB.
+    tokens = {t["id"]: t["access_token"] for t in data["teams"]}
+    display = c.get(f"/api/draft/{token}/display").json()
+    t1 = tokens[display["current_slot"]["drafting_team_id"]]
+    assert c.post(
+        f"/api/draft/{token}/team/{t1}/picks",
+        json={"player_id": by_name["Player 1"]["id"]},
+    ).status_code == 200
+    team2 = data["teams"][1]["access_token"]
+    assert c.post(
+        f"/api/draft/{token}/team/{team2}/picks",
+        json={"player_id": by_name["Player 2"]["id"]},
+    ).status_code == 200
+
+    state = c.get(f"/api/draft/{token}/team/{team2}").json()
+    roster = {r["slot"]: r["player"] for r in state["roster_by_slot"]}
+    assert roster["RB1"]["player_name"] == "Player 2"
+    assert roster["QB1"] is None
+    assert roster["Flex"] is None
+    assert state["bench"] == []
+
+
+def test_rosters_endpoint(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    rosters = c.get(f"/api/draft/{token}/rosters").json()
+    assert rosters["status"] == "SETUP"
+    assert len(rosters["teams"]) == 4
+    assert len(rosters["teams"][0]["roster"]) == 10
+    assert rosters["teams"][0]["bench"] == []
+
+
+def test_delete_league(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    assert c.delete(f"/api/draft/{token}/admin/delete").status_code == 200
+    assert c.get(f"/api/draft/{token}/admin/config").status_code == 404
+    leagues = c.get("/api/leagues").json()
+    assert all(l["id"] != data["id"] for l in leagues)
