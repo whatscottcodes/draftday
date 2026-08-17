@@ -55,6 +55,7 @@ class League(Base):
     status: Mapped[str] = mapped_column(String(20), default=LeagueStatus.SETUP)
     access_token: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     roster_slots: Mapped[list] = mapped_column(JSON, default=list)
+    keeper_workspace: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     teams: Mapped[list["Team"]] = relationship(
@@ -80,6 +81,9 @@ class League(Base):
     )
     events: Mapped[list["DraftEvent"]] = relationship(
         back_populates="league", cascade="all, delete-orphan"
+    )
+    yahoo_config: Mapped["YahooConfig | None"] = relationship(
+        back_populates="league", cascade="all, delete-orphan", uselist=False
     )
 
 
@@ -208,6 +212,27 @@ class KeeperCandidate(Base):
             "league_id", "team_id", "player_id", name="uq_league_team_candidate"
         ),
     )
+
+
+class YahooConfig(Base):
+    __tablename__ = "yahoo_configs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    league_id: Mapped[int] = mapped_column(
+        ForeignKey("leagues.id"), unique=True, index=True
+    )
+    league_id_external: Mapped[str] = mapped_column(String(40), default="")
+    game_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    game_code: Mapped[str] = mapped_column(String(10), default="nfl")
+    season_id: Mapped[str] = mapped_column(String(20), default="")
+    consumer_key: Mapped[str] = mapped_column(String(500), default="")
+    consumer_secret: Mapped[str] = mapped_column(String(500), default="")
+    access_token_json: Mapped[dict | None] = mapped_column(JSON, nullable=True, default=None)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    league: Mapped[League] = relationship(back_populates="yahoo_config")
 
 
 class Pick(Base):

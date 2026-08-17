@@ -494,3 +494,124 @@ def test_clear_keeper_candidates(client):
     assert resp.json()["cleared"] == 1
     cfg = c.get(f"/api/draft/{token}/admin/config").json()
     assert cfg["keeper_candidates"] == []
+
+
+def _upload_draft_csv(c, token, year, role, csv_text):
+    return c.post(
+        f"/api/draft/{token}/admin/keepers/draft-csv",
+        files={"file": ("draft.csv", csv_text, "text/csv")},
+        data={"year": year, "role": role},
+    )
+
+
+def test_keeper_admin_full_flow(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    team1 = data["teams"][0]["id"]
+
+    setup = c.get(f"/api/draft/{token}/admin/keepers/setup").json()
+    assert setup["league"]["editable"] is True
+    assert len(setup["teams"]) == 4
+
+    previous = (
+        "ROUND,Team 1,Team 2\n"
+        '1,"RB\nSF\n1\nBreece\nHall"\n'
+        '2,"WR\nNYJ\n2\nTyreek\nHill(K)"\n'
+        '3,"RB\nDET\n3\nJahmyr\nGibbs"\n'
+        '1,"QB\nBUF\n1\nJosh\nAllen"\n'
+    )
+    r = _upload_draft_csv(c, token, "2025", "previous", previous)
+    assert r.status_code == 200
+    assert r.json()["total_picks"] == 4
+
+    prior = (
+        "ROUND,Team 1,Team 2\n"
+        '1,"WR\nNYJ\n2\nTyreek\nHill(K)"\n'
+    )
+    r = _upload_draft_csv(c, token, "2024", "prior", prior)
+    assert r.status_code == 200
+
+    roster1 = (
+        "name,player_id,team,selected_position,was_added\n"
+        "Breece Hall,p1,SF,RB,False\n"
+        "Tyreek Hill,p2,NYJ,WR,False\n"
+        "Jahmyr Gibbs,p3,DET,RB,True\n"
+    )
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/rosters-csv",
+        files=[("files", ("Team 1.csv", roster1, "text/csv"))],
+    )
+    assert r.status_code == 200
+    assert r.json()["teams"] == {"Team 1": 3}
+
+    mappings = {"mappings": [{"team_id": team1, "draft_name": "Team 1", "yahoo_name": "Team 1"}]}
+    assert c.post(f"/api/draft/{token}/admin/keepers/mappings", json=mappings).status_code == 200
+
+    r = c.post(f"/api/draft/{token}/admin/keepers/identify")
+    assert r.status_code == 200
+    body = r.json()
+    preview = body["preview"]
+    assert len(preview) == 1
+    candidates = preview[0]["candidates"]
+    by_name = {x["player_name"]: x for x in candidates}
+    # Kept 2 consecutive years -> ineligible.
+    assert "Tyreek Hill" not in by_name
+    # Round-1 drafted, not keeper -> cost 1 (floored).
+    assert by_name["Breece Hall"]["cost_round"] == 1
+    assert by_name["Breece Hall"]["years_kept"] == 0
+    # Waiver add -> round 11.
+    assert by_name["Jahmyr Gibbs"]["cost_round"] == 11
+    assert by_name["Jahmyr Gibbs"]["years_kept"] == 0
+    assert "kept 2 consecutive" in "\n".join(body["warnings"])
+
+    r = c.post(f"/api/draft/{token}/admin/keepers/save", json={})
+    assert r.status_code == 200
+    assert r.json()["stats"]["created"] == 2
+
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    assert len(cfg["keeper_candidates"]) == 2
+
+    r = c.get(f"/api/draft/{token}/admin/keepers/export")
+    assert r.status_code == 200
+    export = r.json()
+    assert len(export["teams"]) == 1
+    assert "Breece Hall" in export["teams"][0]["csv"]
+    assert "Jahmyr Gibbs" in export["teams"][0]["csv"]
+
+
+def test_keeper_admin_requires_draft_and_rosters(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    assert c.post(f"/api/draft/{token}/admin/keepers/identify").status_code == 400
+    assert c.post(f"/api/draft/{token}/admin/keepers/save", json={}).status_code == 400
+
+
+def test_keeper_admin_yahoo_config_and_authorize(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/yahoo-config",
+        json={
+            "league_id_external": "735068",
+            "game_id": 449,
+            "season_id": "2025",
+            "consumer_key": "abc123secret",
+            "consumer_secret": "shhhhh",
+        },
+    )
+    assert r.status_code == 200
+    yahoo = r.json()["yahoo"]
+    assert yahoo["configured"] is True
+    assert yahoo["consumer_key"] != "abc123secret"  # masked
+    assert yahoo["has_token"] is False
+
+    r = c.post(f"/api/draft/{token}/admin/keepers/yahoo/authorize")
+    assert r.status_code == 200
+    assert "api.login.yahoo.com" in r.json()["authorization_url"]
+
+    r = c.post(f"/api/draft/{token}/admin/keepers/fetch")
+    assert r.status_code == 400  # not authorized
+    assert "not authorized" in r.json()["detail"]

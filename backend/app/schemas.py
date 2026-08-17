@@ -92,6 +92,56 @@ class CsvTextIn(BaseModel):
     csv: str = Field(min_length=1)
 
 
+class YahooConfigIn(BaseModel):
+    league_id_external: str = ""
+    game_id: int | None = None
+    game_code: str = "nfl"
+    season_id: str = ""
+    week: int | None = None
+    consumer_key: str = ""
+    consumer_secret: str = ""
+
+
+class YahooCodeIn(BaseModel):
+    code: str = Field(min_length=1)
+
+
+class KeeperMappingItem(BaseModel):
+    team_id: int
+    draft_name: str = ""
+    yahoo_name: str = ""
+
+
+class KeeperMappingsIn(BaseModel):
+    mappings: list[KeeperMappingItem] = []
+
+
+class KeeperCandidateAdjust(BaseModel):
+    team_id: int
+    player_name: str
+    cost_round: int | None = None
+    keepable: bool = True
+
+
+class KeeperCandidateRow(BaseModel):
+    player_name: str = Field(min_length=1)
+    position: str = ""
+    nfl_team: str = ""
+    player_id_external: str = ""
+    cost_round: int = Field(ge=1)
+    years_kept: int = 0
+    keepable_until_year: str = ""
+
+
+class KeeperTeamSave(BaseModel):
+    team_id: int
+    candidates: list[KeeperCandidateRow] = []
+
+
+class KeeperSaveIn(BaseModel):
+    teams: list[KeeperTeamSave] = []
+
+
 class ValidationIssue(BaseModel):
     severity: str  # "error" | "warning"
     code: str

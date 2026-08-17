@@ -15,6 +15,7 @@ from ..models import (
     Player,
     Ranking,
     Team,
+    YahooConfig,
 )
 
 
@@ -443,6 +444,7 @@ def delete_league(db: Session, league: League) -> None:
     db.execute(delete(KeeperCandidate).where(KeeperCandidate.league_id == league_id))
     db.execute(delete(Ranking).where(Ranking.league_id == league_id))
     db.execute(delete(DraftSlot).where(DraftSlot.league_id == league_id))
+    db.execute(delete(YahooConfig).where(YahooConfig.league_id == league_id))
     db.execute(delete(Player).where(Player.league_id == league_id))
     db.execute(delete(Team).where(Team.league_id == league_id))
     db.delete(league)

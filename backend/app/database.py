@@ -33,6 +33,11 @@ _MIGRATIONS = [
         "roster_slots",
         {"sqlite": "roster_slots JSON", "postgresql": "roster_slots JSONB"},
     ),
+    (
+        "leagues",
+        "keeper_workspace",
+        {"sqlite": "keeper_workspace JSON", "postgresql": "keeper_workspace JSONB"},
+    ),
 ]
 
 
