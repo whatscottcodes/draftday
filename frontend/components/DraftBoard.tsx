@@ -65,8 +65,11 @@ export function DraftBoard({ state }: { state: DraftState }) {
                           <span className="truncate font-medium">
                             {slot.player_name}
                           </span>
-                          {slot.status === "KEEPER" && (
-                            <span className="badge bg-slate-900/30 text-slate-900">
+                          {(slot.pick_type === "keeper" || slot.status === "KEEPER") && (
+                            <span
+                              className="badge bg-slate-900/30 text-slate-900"
+                              title="Logged as keeper"
+                            >
                               K
                             </span>
                           )}
