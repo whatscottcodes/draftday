@@ -677,6 +677,19 @@ function OverridePick({
   const [slotId, setSlotId] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [playerId, setPlayerId] = useState<string>("");
+  const [open, setOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
   const target = slotId
     ? state.board.find((b) => b.slot_id === Number(slotId))
     : state.current_slot;
@@ -720,44 +733,50 @@ function OverridePick({
             ))}
         </select>
       </label>
-      <div className="flex-1 min-w-64 space-y-1 text-xs text-slate-400">
+      <div className="relative flex-1 min-w-64 space-y-1 text-xs text-slate-400" ref={pickerRef}>
         <span>Player</span>
         <input
           className="input w-full"
           placeholder="Search players…"
           value={query}
+          onFocus={() => setOpen(true)}
           onChange={(e) => {
             setQuery(e.target.value);
             setPlayerId("");
+            setOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
           }}
         />
-        <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900">
-          {matches.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-slate-800 ${
-                Number(playerId) === p.id ? "bg-slate-800" : ""
-              }`}
-              onClick={() => {
-                setPlayerId(String(p.id));
-                setQuery(p.name);
-              }}
-            >
-              <span className="w-8 text-right text-slate-500 shrink-0">
-                {p.rank ?? "—"}
-              </span>
-              <span className="font-semibold truncate">{p.name}</span>
-              <PositionBadge position={p.position} size="xs" />
-              <span className="text-slate-500 shrink-0">{p.nfl_team}</span>
-            </button>
-          ))}
-          {matches.length === 0 && (
-            <p className="text-sm text-slate-500 px-3 py-2">
-              No players match.
-            </p>
-          )}
-        </div>
+        {open && (
+          <div className="absolute z-20 w-full max-h-56 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900 shadow-xl">
+            {matches.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-slate-800"
+                onClick={() => {
+                  setPlayerId(String(p.id));
+                  setQuery(p.name);
+                  setOpen(false);
+                }}
+              >
+                <span className="w-8 text-right text-slate-500 shrink-0">
+                  {p.rank ?? "—"}
+                </span>
+                <span className="font-semibold truncate">{p.name}</span>
+                <PositionBadge position={p.position} size="xs" />
+                <span className="text-slate-500 shrink-0">{p.nfl_team}</span>
+              </button>
+            ))}
+            {matches.length === 0 && (
+              <p className="text-sm text-slate-500 px-3 py-2">
+                No players match.
+              </p>
+            )}
+          </div>
+        )}
       </div>
       <button
         className="btn-primary"
