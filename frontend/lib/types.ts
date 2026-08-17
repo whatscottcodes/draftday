@@ -113,6 +113,19 @@ export interface TeamState {
     nfl_team: string;
     round: number;
   }[];
+  keeper_candidates: {
+    candidate_id: number;
+    player_id: number;
+    player_name: string;
+    position: string;
+    nfl_team: string;
+    cost_round: number;
+    years_kept: number;
+    keepable_until_year: number;
+    selected: boolean;
+  }[];
+  keeper_count: number;
+  max_keepers: number;
   recent_picks: RecentPick[];
   upcoming_picks: BoardSlot[];
   next_picks: NextPick[];
@@ -159,6 +172,19 @@ export interface AdminConfig {
     player_name: string;
     position: string;
     round: number;
+  }[];
+  keeper_candidates: {
+    candidate_id: number;
+    team_id: number;
+    team_name: string;
+    player_id: number;
+    player_name: string;
+    position: string;
+    nfl_team: string;
+    cost_round: number;
+    years_kept: number;
+    keepable_until_year: number;
+    selected: boolean;
   }[];
   players: {
     id: number;

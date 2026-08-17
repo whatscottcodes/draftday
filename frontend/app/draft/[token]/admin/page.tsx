@@ -141,6 +141,43 @@ export default function AdminPage({
     }
   }
 
+  async function importKeeperFiles(files: FileList) {
+    const fd = new FormData();
+    for (const f of Array.from(files)) fd.append("files", f);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/draft/${token}/admin/import/keepers`,
+        { method: "POST", body: fd },
+      );
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.detail ?? "Import failed");
+      const { stats, warnings } = body;
+      const parts = [
+        `${stats?.created ?? 0} created, ${stats?.updated ?? 0} updated`,
+        stats?.unmatched_teams?.length
+          ? `unmatched teams: ${stats.unmatched_teams.join(", ")}`
+          : null,
+        stats?.unmatched_players?.length
+          ? `unmatched players: ${stats.unmatched_players.join(", ")}`
+          : null,
+        warnings?.length ? `warnings: ${warnings.join("; ")}` : null,
+      ].filter(Boolean);
+      flash(true, `Keepers imported — ${parts.join(" · ")}`);
+      await loadConfig();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import failed");
+    }
+  }
+
+  async function clearKeeperCandidates() {
+    const ok = await action(
+      "DELETE",
+      `/api/draft/${token}/admin/keepers/candidates`,
+    );
+    if (ok) flash(true, "Keeper candidates cleared");
+  }
+
   async function importCsvText() {
     if (!csvText.trim()) return;
     try {
@@ -581,6 +618,61 @@ export default function AdminPage({
             </li>
           ))}
         </ul>
+      </section>
+
+      {/* Keeper candidates */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
+          Keeper candidates ({config.keeper_candidates.length})
+        </h2>
+        {editable && (
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <input
+              type="file"
+              accept=".csv"
+              multiple
+              className="text-sm"
+              onChange={(e) => {
+                const fs = e.target.files;
+                if (fs?.length) importKeeperFiles(fs);
+                e.target.value = "";
+              }}
+            />
+            <span className="text-xs text-slate-600">
+              Per-team roster CSVs (filename = team) or a keepers_2024.csv
+            </span>
+          </div>
+        )}
+        {config.keeper_candidates.length === 0 ? (
+          <p className="text-sm text-slate-500">No candidates imported.</p>
+        ) : (
+          <>
+            <ul className="space-y-1 text-sm">
+              {config.keeper_candidates.map((k) => (
+                <li
+                  key={k.candidate_id}
+                  className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5"
+                >
+                  <span className="font-semibold">{k.player_name}</span>{" "}
+                  <PositionBadge position={k.position} size="xs" />{" "}
+                  <span className="text-slate-500">
+                    {k.nfl_team ? `· ${k.nfl_team} ` : ""}· R{k.cost_round} ·{" "}
+                    {k.team_name}
+                    {k.years_kept === 1 ? " · last year" : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {editable && (
+              <button
+                className="btn-secondary mt-3"
+                onClick={clearKeeperCandidates}
+              >
+                Clear all candidates
+              </button>
+            )}
+          </>
+        )}
       </section>
 
       {/* Player import */}

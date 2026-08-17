@@ -104,6 +104,40 @@ export default function TeamPage({
     }
   }
 
+  async function selectKeeper(playerId: number) {
+    setPicking(playerId);
+    setNotice(null);
+    try {
+      await apiJson(`/api/draft/${token}/team/${teamToken}/keepers`, {
+        method: "POST",
+        body: JSON.stringify({ player_id: playerId }),
+      });
+      await fetchTeam();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Keeper not saved");
+    } finally {
+      setPicking(null);
+    }
+  }
+
+  async function removeKeeper(playerId: number) {
+    const keeper = state?.keepers.find((k) => k.player_id === playerId);
+    if (!keeper) return;
+    setPicking(playerId);
+    setNotice(null);
+    try {
+      await apiJson(
+        `/api/draft/${token}/team/${teamToken}/keepers/${keeper.keeper_id}`,
+        { method: "DELETE" },
+      );
+      await fetchTeam();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Keeper not removed");
+    } finally {
+      setPicking(null);
+    }
+  }
+
   if (error) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-100 p-4">
@@ -172,6 +206,75 @@ export default function TeamPage({
 
       {notice && (
         <div className="px-4 py-2 bg-red-900/40 text-red-300 text-sm">{notice}</div>
+      )}
+
+      {/* Keepers (pre-draft) */}
+      {(state.status === "SETUP" || state.status === "READY") && (
+        <section className="px-4 py-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs uppercase tracking-widest text-slate-500">
+              Keepers ({state.keeper_count}/{state.max_keepers})
+            </h2>
+            <span className="text-[11px] text-slate-600">
+              Selections lock when the draft starts
+            </span>
+          </div>
+          {state.keeper_candidates.length === 0 && state.keeper_count === 0 ? (
+            <p className="text-sm text-slate-500">
+              No keeper candidates yet.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {state.keeper_candidates.map((k) => (
+                <li
+                  key={k.candidate_id}
+                  className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"
+                >
+                  <span className="w-9 text-right text-xs font-semibold text-amber-400/80">
+                    R{k.cost_round}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold truncate">
+                      {k.player_name}
+                      {k.selected && (
+                        <span className="ml-1 text-amber-400">★</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-slate-500">
+                      <PositionBadge position={k.position} size="xs" />
+                      <span className="truncate">
+                        {k.nfl_team ? ` · ${k.nfl_team}` : ""} ·{" "}
+                        {k.years_kept === 1
+                          ? "Last keepable year"
+                          : `Keepable until ${k.keepable_until_year}`}
+                      </span>
+                    </div>
+                  </div>
+                  {k.selected ? (
+                    <button
+                      className="btn-secondary text-xs"
+                      disabled={picking === k.player_id}
+                      onClick={() => removeKeeper(k.player_id)}
+                    >
+                      {picking === k.player_id ? "…" : "Remove"}
+                    </button>
+                  ) : (
+                    <button
+                      className="btn-primary text-xs"
+                      disabled={
+                        picking === k.player_id ||
+                        state.keeper_count >= state.max_keepers
+                      }
+                      onClick={() => selectKeeper(k.player_id)}
+                    >
+                      {picking === k.player_id ? "…" : "Keep"}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       {/* Last 3 picks */}
