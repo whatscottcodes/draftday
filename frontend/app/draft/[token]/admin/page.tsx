@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { apiJson, connectDraftSocket } from "@/lib/api";
 import type { AdminConfig, DraftState } from "@/lib/types";
@@ -354,6 +354,7 @@ export default function AdminPage({
           </h2>
           <OverridePick
             state={state}
+            players={players}
             onPick={(slotId, playerId) =>
               makePickForCurrent(slotId, playerId)
             }
@@ -666,16 +667,39 @@ export default function AdminPage({
 
 function OverridePick({
   state,
+  players,
   onPick,
 }: {
   state: DraftState;
+  players: AdminConfig["players"];
   onPick: (slotId: number | undefined, playerId: number) => void;
 }) {
   const [slotId, setSlotId] = useState<string>("");
+  const [query, setQuery] = useState<string>("");
   const [playerId, setPlayerId] = useState<string>("");
   const target = slotId
     ? state.board.find((b) => b.slot_id === Number(slotId))
     : state.current_slot;
+
+  const available = useMemo(
+    () => players.filter((p) => !p.taken),
+    [players],
+  );
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = q
+      ? available.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            (p.nfl_team ?? "").toLowerCase().includes(q),
+        )
+      : available.slice(0, 50);
+    return list
+      .slice()
+      .sort((a, b) => (a.rank ?? 1 << 30) - (b.rank ?? 1 << 30))
+      .slice(0, 60);
+  }, [available, query]);
 
   return (
     <div className="flex flex-wrap gap-2 items-end">
@@ -696,22 +720,45 @@ function OverridePick({
             ))}
         </select>
       </label>
-      <label className="space-y-1 text-xs text-slate-400">
-        Player
-        <select
-          className="input w-56"
-          value={playerId}
-          onChange={(e) => setPlayerId(e.target.value)}
-        >
-          <option value="">Select player…</option>
-          {state.top_available.map((p) => (
-            <option key={p.player_id} value={p.player_id}>
-              {p.rank !== null ? `${p.rank}. ` : ""}
-              {p.name} ({p.position})
-            </option>
+      <div className="flex-1 min-w-64 space-y-1 text-xs text-slate-400">
+        <span>Player</span>
+        <input
+          className="input w-full"
+          placeholder="Search players…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPlayerId("");
+          }}
+        />
+        <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900">
+          {matches.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-slate-800 ${
+                Number(playerId) === p.id ? "bg-slate-800" : ""
+              }`}
+              onClick={() => {
+                setPlayerId(String(p.id));
+                setQuery(p.name);
+              }}
+            >
+              <span className="w-8 text-right text-slate-500 shrink-0">
+                {p.rank ?? "—"}
+              </span>
+              <span className="font-semibold truncate">{p.name}</span>
+              <PositionBadge position={p.position} size="xs" />
+              <span className="text-slate-500 shrink-0">{p.nfl_team}</span>
+            </button>
           ))}
-        </select>
-      </label>
+          {matches.length === 0 && (
+            <p className="text-sm text-slate-500 px-3 py-2">
+              No players match.
+            </p>
+          )}
+        </div>
+      </div>
       <button
         className="btn-primary"
         disabled={!playerId}
