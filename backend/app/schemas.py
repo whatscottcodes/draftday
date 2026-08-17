@@ -143,5 +143,6 @@ class TeamState(BaseModel):
     keepers: list[dict] = []
     recent_picks: list[dict] = []
     upcoming_picks: list[dict] = []
+    next_picks: list[dict] = []
     players: list[dict] = []
     available_count: int = 0

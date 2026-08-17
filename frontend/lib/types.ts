@@ -77,6 +77,13 @@ export interface TeamRosterPlayer {
   pick_type: PickType;
 }
 
+export interface NextPick {
+  pick_number: number;
+  round: number;
+  drafting_team_id: number;
+  drafting_team_name: string;
+}
+
 export interface TeamState {
   league_id: number;
   league_name: string;
@@ -98,6 +105,7 @@ export interface TeamState {
   }[];
   recent_picks: RecentPick[];
   upcoming_picks: BoardSlot[];
+  next_picks: NextPick[];
   players: AvailablePlayer[];
   available_count: number;
 }

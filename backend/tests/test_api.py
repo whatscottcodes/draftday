@@ -101,6 +101,11 @@ def test_import_players_and_run_draft_end_to_end(client):
     team_state = c.get(f"/api/draft/{token}/team/{team2}").json()
     assert team_state["on_the_clock"] is True
 
+    # Next-picks row lists the upcoming open slots with team names.
+    assert team_state["next_picks"]
+    assert all("drafting_team_name" in s for s in team_state["next_picks"])
+    assert len(team_state["next_picks"]) <= 3
+
     # Team 2 makes a pick.
     p2 = next(p for p in players if p["name"] == "Player 2")
     pick = c.post(

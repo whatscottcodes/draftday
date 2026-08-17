@@ -142,6 +142,49 @@ export default function TeamPage({
         <div className="px-4 py-2 bg-red-900/40 text-red-300 text-sm">{notice}</div>
       )}
 
+      {/* Last 3 picks */}
+      {state.recent_picks.length > 0 && (
+        <section className="px-4 py-3">
+          <h2 className="text-xs uppercase tracking-widest text-slate-500 mb-2">
+            Last picks
+          </h2>
+          <div className="flex flex-wrap gap-1.5">
+            {state.recent_picks.slice(0, 3).map((p) => (
+              <span
+                key={p.id}
+                className="badge bg-slate-800 text-slate-200 border border-slate-700"
+              >
+                <span className="text-slate-500">#{p.pick_number}</span>{" "}
+                <span className="font-semibold">{p.player_name}</span>{" "}
+                <PositionBadge position={p.position} size="xs" />{" "}
+                <span className="text-slate-500">{p.team_name}</span>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Next 3 picks */}
+      {state.next_picks.length > 0 && (
+        <section className="px-4 py-3">
+          <h2 className="text-xs uppercase tracking-widest text-slate-500 mb-2">
+            Up next
+          </h2>
+          <div className="flex flex-wrap gap-1.5">
+            {state.next_picks.map((s) => (
+              <span
+                key={s.pick_number}
+                className="badge border border-slate-700 bg-slate-900 text-slate-300"
+              >
+                <span className="text-slate-500">#{s.pick_number}</span>{" "}
+                <span className="font-semibold">{s.drafting_team_name}</span>
+                <span className="text-slate-500">R{s.round}</span>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Roster + keepers */}
       <section className="px-4 py-3 space-y-2">
         <h2 className="text-xs uppercase tracking-widest text-slate-500">

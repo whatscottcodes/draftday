@@ -189,6 +189,25 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
             ):
                 upcoming.append(slot)
 
+    team_name_by_id = {t["id"]: t["name"] for t in state["teams"]}
+    next_picks = []
+    if league.status == "LIVE":
+        start = current["pick_number"] if current else 1
+        for slot in state["board"]:
+            if slot["status"] == "OPEN" and slot["pick_number"] >= start:
+                next_picks.append(
+                    {
+                        "pick_number": slot["pick_number"],
+                        "round": slot["round"],
+                        "drafting_team_id": slot["drafting_team_id"],
+                        "drafting_team_name": team_name_by_id.get(
+                            slot["drafting_team_id"], "?"
+                        ),
+                    }
+                )
+                if len(next_picks) == 3:
+                    break
+
     avail = engine.available_players(db, league, limit=200)
     players = [
         {
@@ -218,6 +237,7 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
         "keepers": keepers,
         "recent_picks": state["recent_picks"],
         "upcoming_picks": upcoming,
+        "next_picks": next_picks,
         "players": players,
         "available_count": state["available_count"],
     }
