@@ -640,6 +640,12 @@ async def draft_ws(token: str, websocket: WebSocket, db: Session = Depends(get_d
         await websocket.send_json(
             {"type": "state", "data": state_builder.build_draft_state(db, league)}
         )
+    finally:
+        # The receive loop below lives for the whole connection; end the
+        # read transaction now so the pooled connection is released instead
+        # of pinning one QueuePool slot (size 5 / overflow 10) per client.
+        db.rollback()
+    try:
         while True:
             await websocket.receive_text()
     except Exception:

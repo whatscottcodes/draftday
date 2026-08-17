@@ -128,6 +128,16 @@ def test_bad_league_token_404(client):
     assert c.get("/api/draft/nope/display").status_code == 404
 
 
+def test_websocket_connect_sends_initial_state(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    with c.websocket_connect(f"/api/draft/{token}/ws") as ws:
+        msg = ws.receive_json()
+        assert msg["type"] == "state"
+        assert msg["data"]["league_id"] == data["id"]
+
+
 def test_wrong_team_pick_rejected(client):
     c, _ = client
     data = _create_league(c)
