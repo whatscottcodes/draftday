@@ -26,7 +26,34 @@ def get_db():
         db.close()
 
 
+_MIGRATIONS = [
+    ("players", "extra", {"sqlite": "extra JSON", "postgresql": "extra JSONB"}),
+]
+
+
+def _existing_columns(conn, table):
+    if engine.dialect.name == "sqlite":
+        return {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+    if engine.dialect.name == "postgresql":
+        rows = conn.exec_driver_sql(
+            "SELECT column_name FROM information_schema.columns "
+            f"WHERE table_name = '{table}'"
+        )
+        return {row[0] for row in rows}
+    return None
+
+
 def init_db():
     from . import models  # noqa: F401  (registers ORM models with Base.metadata)
 
     Base.metadata.create_all(bind=engine)
+
+    existing = _existing_columns
+    for table, column, ddl_by_dialect in _MIGRATIONS:
+        ddl = ddl_by_dialect.get(engine.dialect.name)
+        if ddl is None:
+            continue
+        with engine.begin() as conn:
+            columns = existing(conn, table)
+            if columns is not None and column not in columns:
+                conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {ddl}")
