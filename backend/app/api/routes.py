@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 import secrets
 
 from fastapi import (
@@ -325,6 +326,15 @@ def _norm_key(value: str) -> str:
     return (value or "").strip().lower().replace(" ", "_").replace("-", "_")
 
 
+def _normalize_position(value: str) -> str:
+    """Strip a trailing rank/tier number from a position.
+
+    FantasyPros exports positions like "RB1" or "WR12" (position plus
+    in-position rank); position filters expect just "RB" or "WR".
+    """
+    return re.sub(r"\d+$", "", (value or "").strip().upper()).strip()
+
+
 def parse_players_csv(raw: str) -> list[PlayerImportRow]:
     """Parse a player/ranking CSV.
 
@@ -364,7 +374,7 @@ def parse_players_csv(raw: str) -> list[PlayerImportRow]:
                 PlayerImportRow(
                     player_id=(row.get(keys.get("player_id", "")) or "").strip(),
                     name=name,
-                    position=(row.get(keys.get("pos", "")) or "").strip().upper(),
+                    position=_normalize_position(row.get(keys.get("pos", ""))),
                     nfl_team=(row.get(keys.get("team", "")) or "").strip().upper(),
                     status="available",
                     rank=rk,
@@ -384,7 +394,7 @@ def parse_players_csv(raw: str) -> list[PlayerImportRow]:
                 PlayerImportRow(
                     player_id=(row.get(keys.get("player_id", "")) or "").strip(),
                     name=name,
-                    position=(row.get(keys.get("position", "")) or "").strip().upper(),
+                    position=_normalize_position(row.get(keys.get("position", ""))),
                     nfl_team=(row.get(keys.get("nfl_team", "")) or "").strip().upper(),
                     status=(row.get(keys.get("status", "")) or "available").strip(),
                     rank=_int_or_none(row.get(keys.get("rank", ""))),
@@ -431,7 +441,7 @@ def _upsert_player(db: Session, league: League, row: PlayerImportRow) -> None:
             league_id=league.id,
             player_id=row.player_id or f"auto-{secrets.token_hex(4)}",
             name=row.name,
-            position=row.position,
+            position=_normalize_position(row.position),
             nfl_team=row.nfl_team,
             status=row.status,
         )
@@ -439,7 +449,7 @@ def _upsert_player(db: Session, league: League, row: PlayerImportRow) -> None:
         db.flush()
     else:
         existing.name = row.name
-        existing.position = row.position or existing.position
+        existing.position = _normalize_position(row.position) or existing.position
         existing.nfl_team = row.nfl_team or existing.nfl_team
         existing.status = row.status or existing.status
     extra = {

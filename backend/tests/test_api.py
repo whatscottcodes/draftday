@@ -212,3 +212,31 @@ def test_fantasypros_rankings_used_by_state(client):
     assert top[0]["name"] == "Christian McCaffrey"
     assert top[0]["rank"] == 1
     assert top[0]["bye_week"] == "9"
+
+
+def test_fantasypros_position_rank_stripped(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    csv_text = (
+        'RK,TIERS,"PLAYER NAME",TEAM,"POS","BYE WEEK","UPSIDE ","BUST ",'
+        '"SOS SEASON","ECR VS. ADP"\n'
+        '1,1,"Christian McCaffrey",SF,RB1,9,25,13,"NEUTRAL",+1\n'
+        '2,1,"Bijan Robinson",ATL,RB2,12,22,10,"EASY",0\n'
+        '3,1,"Tyreek Hill",MIA,WR3,6,24,11,"HARD",-2\n'
+        '4,1,"Trey McBride",ARI,TE1,10,20,9,"EASY",+1\n'
+        '5,1,"Josh Allen",BUF,QB1,12,26,8,"HARD",0\n'
+    )
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/text",
+        json={"csv": csv_text},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["imported"] == 5
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    positions = {p["name"]: p["position"] for p in players}
+    assert positions["Christian McCaffrey"] == "RB"
+    assert positions["Bijan Robinson"] == "RB"
+    assert positions["Tyreek Hill"] == "WR"
+    assert positions["Trey McBride"] == "TE"
+    assert positions["Josh Allen"] == "QB"
