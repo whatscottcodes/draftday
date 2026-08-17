@@ -190,6 +190,14 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
                 upcoming.append(slot)
 
     team_name_by_id = {t["id"]: t["name"] for t in state["teams"]}
+    roster_counts: dict[int, dict[str, int]] = {}
+    for slot in state["board"]:
+        if slot.get("status") in ("FILLED", "KEEPER") and slot.get("player_name"):
+            team_id = slot["drafting_team_id"]
+            counts = roster_counts.setdefault(team_id, {})
+            pos = slot.get("position") or "?"
+            counts[pos] = counts.get(pos, 0) + 1
+
     next_picks = []
     if league.status == "LIVE":
         start = current["pick_number"] if current else 1
@@ -202,6 +210,11 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
                         "drafting_team_id": slot["drafting_team_id"],
                         "drafting_team_name": team_name_by_id.get(
                             slot["drafting_team_id"], "?"
+                        ),
+                        "roster": dict(
+                            sorted(
+                                roster_counts.get(slot["drafting_team_id"], {}).items()
+                            )
                         ),
                     }
                 )

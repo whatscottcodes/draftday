@@ -82,6 +82,7 @@ export interface NextPick {
   round: number;
   drafting_team_id: number;
   drafting_team_name: string;
+  roster?: Record<string, number>;
 }
 
 export interface TeamState {

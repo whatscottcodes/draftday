@@ -8,6 +8,15 @@ import { PositionBadge } from "@/components/PositionBadge";
 type SortKey = "rank" | "name";
 type Position = "ALL" | "QB" | "RB" | "WR" | "TE" | "K" | "DST";
 
+const POSITION_ORDER = ["QB", "RB", "WR", "TE", "K", "DST", "DEF"];
+
+function rosterText(roster?: Record<string, number>): string {
+  if (!roster) return "";
+  return POSITION_ORDER.filter((p) => (roster[p] ?? 0) > 0)
+    .map((p) => `${p}:${roster[p]}`)
+    .join("|");
+}
+
 export default function TeamPage({
   params,
 }: {
@@ -174,11 +183,16 @@ export default function TeamPage({
             {state.next_picks.map((s) => (
               <span
                 key={s.pick_number}
-                className="badge border border-slate-700 bg-slate-900 text-slate-300 gap-1.5"
+                className="badge border border-slate-700 bg-slate-900 text-slate-300 flex-col items-start gap-0.5 rounded-lg"
               >
-                <span className="text-slate-500">#{s.pick_number}</span>
-                <span className="font-semibold">{s.drafting_team_name}</span>
-                <span className="text-slate-500">R{s.round}</span>
+                <span className="flex gap-1.5">
+                  <span className="text-slate-500">#{s.pick_number}</span>
+                  <span className="font-semibold">{s.drafting_team_name}</span>
+                  <span className="text-slate-500">R{s.round}</span>
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  {rosterText(s.roster) || "No players"}
+                </span>
               </span>
             ))}
           </div>

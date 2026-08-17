@@ -105,6 +105,7 @@ def test_import_players_and_run_draft_end_to_end(client):
     assert team_state["next_picks"]
     assert all("drafting_team_name" in s for s in team_state["next_picks"])
     assert len(team_state["next_picks"]) <= 3
+    assert "roster" in team_state["next_picks"][0]
 
     # Team 2 makes a pick.
     p2 = next(p for p in players if p["name"] == "Player 2")
