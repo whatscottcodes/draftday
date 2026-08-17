@@ -299,5 +299,5 @@ export interface KeeperSetup {
     consumer_key: string;
     has_token: boolean;
   };
-  previous_drafts: { id: number; name: string; season: string }[];
+  previous_drafts: { id: number; name: string; season: string; picks: number }[];
 }

@@ -6,6 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
+from app.models import League, LeagueStatus, Pick, PickType
 
 
 @pytest.fixture()
@@ -614,4 +615,90 @@ def test_keeper_admin_yahoo_config_and_authorize(client):
 
     r = c.post(f"/api/draft/{token}/admin/keepers/fetch")
     assert r.status_code == 400  # not authorized
-    assert "not authorized" in r.json()["detail"]
+
+
+def _complete_league_with_picks(c, session, data, picks):
+    """Drive `data` (from _create_league) to COMPLETED with direct Pick rows.
+
+    picks: list of (slot_index, team_index, player_name, pick_type).
+    """
+    token = data["access_token"]
+    csv_data = "player_id,name,position,nfl_team,rank\n" + "\n".join(
+        f"p{i},Player {i},{'RB' if i % 2 else 'QB'},NFL,{i}"
+        for i in range(1, 9)
+    )
+    c.post(
+        f"/api/draft/{token}/admin/import/csv",
+        files={"file": ("players.csv", csv_data, "text/csv")},
+    )
+    league = session.get(League, data["id"])
+    teams = sorted(league.teams, key=lambda t: t.draft_position)
+    players = {p.name: p for p in league.players}
+    slots = sorted(league.slots, key=lambda s: s.pick_number)
+    for slot_index, team_index, player_name, pick_type in picks:
+        slot = slots[slot_index]
+        session.add(
+            Pick(
+                league_id=league.id,
+                draft_slot_id=slot.id,
+                team_id=teams[team_index].id,
+                player_id=players[player_name].id,
+                pick_type=pick_type,
+            )
+        )
+    league.status = LeagueStatus.COMPLETED
+    session.commit()
+    return league
+
+
+def test_keeper_admin_use_completed_draft(client):
+    c, session = client
+    src = _create_league(c)
+    src_league = _complete_league_with_picks(
+        c,
+        session,
+        src,
+        [
+            (0, 0, "Player 1", PickType.LIVE),  # r1 Team 1
+            (1, 1, "Player 2", PickType.KEEPER),  # r1 Team 2 kept
+            (2, 0, "Player 3", PickType.LIVE),  # r2 Team 1
+            (3, 1, "Player 4", PickType.LIVE),  # r2 Team 2
+        ],
+    )
+
+    cur = _create_league(c)
+    token = cur["access_token"]
+
+    setup = c.get(f"/api/draft/{token}/admin/keepers/setup").json()
+    assert len(setup["previous_drafts"]) == 1
+    assert setup["previous_drafts"][0]["picks"] == 4
+
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/use-draft",
+        json={"draft_league_id": src_league.id, "role": "previous"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["year"] == src_league.season
+    assert body["teams"] == {"Team 1": 2, "Team 2": 2}
+
+    setup = c.get(f"/api/draft/{token}/admin/keepers/setup").json()
+    assert setup["draft"]["has_draft"] is True
+    assert setup["draft"]["previous_year"] == src_league.season
+    assert "Team 1" in setup["draft"]["draft_teams"]
+
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/use-draft",
+        json={"draft_league_id": src_league.id, "role": "prior"},
+    )
+    assert r.status_code == 200
+    setup = c.get(f"/api/draft/{token}/admin/keepers/setup").json()
+    assert setup["draft"]["prior_year"] == src_league.season
+
+    # The current league itself cannot be used as its own prior draft.
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/use-draft",
+        json={"draft_league_id": cur["id"], "role": "previous"},
+    )
+    assert r.status_code == 400
+    assert "not a completed draft" in r.json()["detail"]

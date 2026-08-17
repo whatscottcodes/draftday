@@ -23,6 +23,7 @@ export default function KeeperAdminPage({
   const [draftFile, setDraftFile] = useState<File | null>(null);
   const [draftYear, setDraftYear] = useState("");
   const [draftRole, setDraftRole] = useState<"previous" | "prior">("previous");
+  const [useDraftId, setUseDraftId] = useState(0);
 
   // Yahoo config
   const [yLeague, setYLeague] = useState("");
@@ -135,6 +136,20 @@ export default function KeeperAdminPage({
     );
     if (body) {
       flash(true, `Draft ${draftYear} (${draftRole}) loaded`);
+      await loadSetup();
+    }
+  }
+
+  async function useDraft() {
+    if (!useDraftId) return;
+    const body = await postJson(
+      `/api/draft/${token}/admin/keepers/use-draft`,
+      { draft_league_id: useDraftId, role: draftRole },
+      "Loading draft…",
+    );
+    if (body) {
+      flash(true, `Loaded ${body.year} (${draftRole})`);
+      setUseDraftId(0);
       await loadSetup();
     }
   }
@@ -408,8 +423,48 @@ export default function KeeperAdminPage({
           ))}
           {!setup.draft.has_draft && (
             <p className="text-slate-600">
-              No draft loaded yet. Upload the previous season clickydraft
-              board, e.g. <span className="font-mono">2024-Draft - Sheet1.csv</span>.
+              No draft loaded yet. Upload a clickydraft CSV or use a completed
+              draft from this app.
+            </p>
+          )}
+        </div>
+
+        <div className="mt-4 border-t border-slate-800 pt-4">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
+            or use a completed draft from this app
+          </h3>
+          <div className="flex flex-wrap items-end gap-2">
+            <select
+              className="input flex-1 min-w-40"
+              value={useDraftId}
+              onChange={(e) => setUseDraftId(Number(e.target.value))}
+            >
+              <option value={0}>— select a completed draft —</option>
+              {setup.previous_drafts.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} · {d.season} · {d.picks} picks
+                </option>
+              ))}
+            </select>
+            <select
+              className="input w-36"
+              value={draftRole}
+              onChange={(e) => setDraftRole(e.target.value as "previous" | "prior")}
+            >
+              <option value="previous">Previous season</option>
+              <option value="prior">Season before (2-yr rule)</option>
+            </select>
+            <button
+              className="btn-primary"
+              disabled={!useDraftId || !!busy}
+              onClick={useDraft}
+            >
+              Load
+            </button>
+          </div>
+          {setup.previous_drafts.length === 0 && (
+            <p className="text-xs text-slate-600 mt-1">
+              No completed drafts in this app yet.
             </p>
           )}
         </div>

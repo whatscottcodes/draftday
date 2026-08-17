@@ -142,6 +142,11 @@ class KeeperSaveIn(BaseModel):
     teams: list[KeeperTeamSave] = []
 
 
+class UseDraftIn(BaseModel):
+    draft_league_id: int
+    role: str = "previous"
+
+
 class ValidationIssue(BaseModel):
     severity: str  # "error" | "warning"
     code: str

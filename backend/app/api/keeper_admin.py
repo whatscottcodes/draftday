@@ -6,8 +6,8 @@ import io
 import re
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
 from ..draft import draft_csv, engine, keeper_identify, state as state_builder
@@ -15,10 +15,20 @@ from ..draft import yahoo as yahoo_mod
 from ..draft.engine import DraftError
 from ..draft.keepers import clear_candidates, import_candidate_rows
 from ..draft.yahoo import YahooError
-from ..models import Keeper, KeeperCandidate, League, LeagueStatus, Team, YahooConfig
+from ..models import (
+    Keeper,
+    KeeperCandidate,
+    League,
+    LeagueStatus,
+    Pick,
+    PickType,
+    Team,
+    YahooConfig,
+)
 from ..schemas import (
     KeeperMappingsIn,
     KeeperSaveIn,
+    UseDraftIn,
     YahooCodeIn,
     YahooConfigIn,
 )
@@ -189,6 +199,14 @@ def keeper_setup(token: str, db: Session = Depends(get_db)):
         .where(League.status == LeagueStatus.COMPLETED, League.id != league.id)
         .order_by(League.created_at.desc())
     )
+    completed_list = list(completed)
+    pick_counts = dict(
+        db.execute(
+            select(Pick.league_id, func.count(Pick.id))
+            .where(Pick.league_id.in_([l.id for l in completed_list]))
+            .group_by(Pick.league_id)
+        ).all()
+    )
 
     return {
         "league": {
@@ -235,8 +253,13 @@ def keeper_setup(token: str, db: Session = Depends(get_db)):
         },
         "yahoo": _masked_yahoo(_get_yahoo_config(db, league)),
         "previous_drafts": [
-            {"id": l.id, "name": l.name, "season": l.season}
-            for l in completed
+            {
+                "id": l.id,
+                "name": l.name,
+                "season": l.season,
+                "picks": pick_counts.get(l.id, 0),
+            }
+            for l in completed_list
         ],
     }
 
@@ -293,6 +316,69 @@ async def upload_draft_csv(
         "role": role,
         "teams": team_counts,
         "total_picks": len(picks),
+    }
+
+
+@router.post("/draft/{token}/admin/keepers/use-draft")
+def use_completed_draft(
+    token: str, body: UseDraftIn, db: Session = Depends(get_db)
+):
+    """Load a completed draft from this app as previous/prior-season data."""
+    league = _get_league(db, token)
+    if body.role not in ("previous", "prior"):
+        raise HTTPException(
+            status_code=400, detail="role must be 'previous' or 'prior'"
+        )
+    completed = db.scalar(
+        select(League)
+        .where(League.id == body.draft_league_id, League.id != league.id)
+        .options(
+            selectinload(League.picks).selectinload(Pick.slot),
+            selectinload(League.picks).selectinload(Pick.player),
+            selectinload(League.picks).selectinload(Pick.team),
+        )
+    )
+    if completed is None or completed.status != LeagueStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail="Selected league is not a completed draft",
+        )
+    picks_by_team: dict[str, list[dict]] = {}
+    for pick in completed.picks:
+        team_name = pick.team.name
+        picks_by_team.setdefault(team_name, []).append(
+            {
+                "round": pick.slot.round,
+                "position": pick.player.position,
+                "nfl_team": pick.player.nfl_team,
+                "name": pick.player.name,
+                "is_keeper": pick.pick_type == PickType.KEEPER,
+            }
+        )
+    if not picks_by_team:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Completed draft '{completed.name}' has no picks",
+        )
+    year = completed.season
+    ws = _get_workspace(league)
+    drafts = ws.setdefault("drafts", {})
+    drafts[year] = picks_by_team
+    if body.role == "prior":
+        ws["prior_year"] = year
+    else:
+        ws["previous_year"] = year
+    ws["draft_team_cols"] = sorted(picks_by_team.keys())
+    ws.pop("preview", None)
+    ws.pop("preview_warnings", None)
+    ws.pop("saved_at", None)
+    _save_workspace(db, league, ws)
+    return {
+        "ok": True,
+        "year": year,
+        "role": body.role,
+        "teams": {name: len(picks) for name, picks in picks_by_team.items()},
+        "total_picks": sum(len(picks) for picks in picks_by_team.values()),
     }
 
 
