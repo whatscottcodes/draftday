@@ -239,3 +239,65 @@ export interface LeagueSummary {
   access_token: string;
   created_at: string | null;
 }
+
+export interface KeeperPreviewCandidate {
+  player_name: string;
+  position: string;
+  nfl_team: string;
+  player_id_external: string;
+  cost_round: number;
+  years_kept: number;
+  keepable_until_year: string;
+}
+
+export interface KeeperPreviewTeam {
+  team_id: number;
+  team_name: string;
+  candidates: KeeperPreviewCandidate[];
+}
+
+export interface KeeperSetup {
+  league: {
+    id: number;
+    name: string;
+    season: string;
+    status: LeagueStatus;
+    editable: boolean;
+  };
+  teams: { id: number; name: string; manager_name: string }[];
+  draft: {
+    previous_year: string;
+    prior_year: string;
+    draft_teams: string[];
+    has_draft: boolean;
+    draft_counts: Record<string, Record<string, number>>;
+  };
+  mappings: { team_id: number; draft_name: string; yahoo_name: string }[];
+  suggested_mappings: {
+    team_id: number;
+    team_name: string;
+    draft_name: string;
+    yahoo_name: string;
+  }[];
+  rosters: {
+    has_rosters: boolean;
+    teams: string[];
+    week: number | null;
+    player_count: number;
+  };
+  preview: {
+    teams: KeeperPreviewTeam[];
+    warnings: string[];
+    saved_at: string | null;
+  };
+  yahoo: {
+    configured: boolean;
+    league_id_external: string;
+    game_id: number | null;
+    season_id: string;
+    week: number | null;
+    consumer_key: string;
+    has_token: boolean;
+  };
+  previous_drafts: { id: number; name: string; season: string }[];
+}

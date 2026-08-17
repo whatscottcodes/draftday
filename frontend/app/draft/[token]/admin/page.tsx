@@ -282,6 +282,12 @@ export default function AdminPage({
           <button className="btn-secondary" onClick={loadConfig}>
             Refresh
           </button>
+          <a
+            href={`/draft/${token}/keepers`}
+            className="btn-secondary"
+          >
+            Keeper admin
+          </a>
           {editable && (
             <button
               className="btn-primary"
