@@ -232,6 +232,8 @@ export default function TeamPage({
                 <div className="text-xs text-slate-500">
                   {p.position}
                   {p.nfl_team ? ` · ${p.nfl_team}` : ""}
+                  {p.bye_week ? ` · BYE ${p.bye_week}` : ""}
+                  {p.tier ? ` · Tier ${p.tier}` : ""}
                 </div>
               </div>
               {state.on_the_clock ? (

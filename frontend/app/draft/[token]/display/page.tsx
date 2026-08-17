@@ -102,6 +102,9 @@ export default function DisplayPage({
                   <span className="text-slate-500 mr-1">{p.rank}.</span>
                 )}
                 {p.name} <span className="text-slate-500 ml-1">{p.position}</span>
+                {p.bye_week && (
+                  <span className="text-slate-600 ml-1">BYE {p.bye_week}</span>
+                )}
               </span>
             ))}
           </div>

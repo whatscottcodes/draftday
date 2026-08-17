@@ -68,10 +68,20 @@ class PlayerImportRow(BaseModel):
     status: str = "available"
     rank: int | None = None
     adp: float | None = None
+    tier: str | None = None
+    bye_week: str | None = None
+    upside: str | None = None
+    bust: str | None = None
+    sos_season: str | None = None
+    ecr_vs_adp: str | None = None
 
 
 class PlayerImport(BaseModel):
     players: list[PlayerImportRow]
+
+
+class CsvTextIn(BaseModel):
+    csv: str = Field(min_length=1)
 
 
 class ValidationIssue(BaseModel):

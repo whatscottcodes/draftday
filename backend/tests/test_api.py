@@ -147,3 +147,68 @@ def test_wrong_team_pick_rejected(client):
     resp = c.post(f"/api/draft/{token}/team/{team2}/picks", json={"player_id": p["id"]})
     assert resp.status_code == 400
     assert "on the clock" in resp.json()["detail"]
+
+
+FANTASYPROS_CSV = (
+    'RK,TIERS,"PLAYER NAME",TEAM,"POS","BYE WEEK","UPSIDE ","BUST ",'
+    '"SOS SEASON","ECR VS. ADP"\n'
+    '1,1,"Christian McCaffrey",SF,RB,9,25,13,"NEUTRAL",+1\n'
+    '2,1,"Bijan Robinson",ATL,RB,12,22,10,"EASY",0\n'
+    '3,1,"Tyreek Hill",MIA,WR,6,24,11,"HARD",-2\n'
+)
+
+
+def test_fantasypros_csv_import(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/csv",
+        files={"file": ("fp.csv", FANTASYPROS_CSV, "text/csv")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["imported"] == 3
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    by_name = {p["name"]: p for p in players}
+    cmc = by_name["Christian McCaffrey"]
+    assert cmc["rank"] == 1
+    assert cmc["position"] == "RB"
+    assert cmc["nfl_team"] == "SF"
+    assert cmc["bye_week"] == "9"
+    assert cmc["tier"] == "1"
+    hill = by_name["Tyreek Hill"]
+    assert hill["rank"] == 3
+    assert hill["position"] == "WR"
+    assert hill["bye_week"] == "6"
+
+
+def test_fantasypros_text_import(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/text",
+        json={"csv": FANTASYPROS_CSV},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["imported"] == 3
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    assert len(players) == 3
+    assert all(p["position"] in ("RB", "WR") for p in players)
+
+
+def test_fantasypros_rankings_used_by_state(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/text",
+        json={"csv": FANTASYPROS_CSV},
+    )
+    assert resp.status_code == 200
+    c.post(f"/api/draft/{token}/admin/start")
+    display = c.get(f"/api/draft/{token}/display").json()
+    top = display["top_available"]
+    assert top[0]["name"] == "Christian McCaffrey"
+    assert top[0]["rank"] == 1
+    assert top[0]["bye_week"] == "9"

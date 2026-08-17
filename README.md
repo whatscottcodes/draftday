@@ -66,6 +66,21 @@ cd backend
 `tests/e2e_flow.py` runs a full draft against a live server
 (start the backend, then `.venv/bin/python tests/e2e_flow.py`).
 
+## Player import
+
+Both the admin file-upload and the "paste CSV" box accept the FantasyPros
+rankings export format automatically:
+
+```
+RK,TIERS,"PLAYER NAME",TEAM,"POS","BYE WEEK","UPSIDE ","BUST ","SOS SEASON","ECR VS. ADP"
+1,1,"Christian McCaffrey",SF,RB,9,25,13,"NEUTRAL",+1
+```
+
+`RK` becomes the rank; `PLAYER NAME`, `TEAM`, and `POS` map to name/team/position;
+`BYE WEEK` and `TIERS` are stored and shown in the admin console, team search,
+and TV top-available list. The generic format
+(`player_id,name,position,nfl_team,status,rank,adp`) is also still supported.
+
 ## Draft model
 
 - Server-side draft state is the single source of truth; clients submit actions and

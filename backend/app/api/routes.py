@@ -34,6 +34,7 @@ from ..schemas import (
     KeeperIn,
     LeagueCreate,
     LeagueCreated,
+    CsvTextIn,
     PickIn,
     PlayerImport,
     PlayerImportRow,
@@ -215,6 +216,12 @@ def admin_config(token: str, db: Session = Depends(get_db)):
                 "status": p.status,
                 "rank": ranks[p.id].rank if p.id in ranks else None,
                 "adp": ranks[p.id].adp if p.id in ranks else None,
+                "tier": (p.extra or {}).get("tier"),
+                "bye_week": (p.extra or {}).get("bye_week"),
+                "upside": (p.extra or {}).get("upside"),
+                "bust": (p.extra or {}).get("bust"),
+                "sos_season": (p.extra or {}).get("sos_season"),
+                "ecr_vs_adp": (p.extra or {}).get("ecr_vs_adp"),
                 "taken": p.id in picked_player_ids,
             }
             for p in players
@@ -287,38 +294,122 @@ async def import_players_csv(
     if league.status != LeagueStatus.SETUP:
         raise HTTPException(status_code=400, detail="Players can only be imported during setup")
     raw = (await file.read()).decode("utf-8-sig")
-    reader = csv.DictReader(io.StringIO(raw))
-    if reader.fieldnames is None:
+    rows = parse_players_csv(raw)
+    if not rows:
         raise HTTPException(status_code=400, detail="Empty CSV file")
-    count = 0
-    for row in reader:
-        if not (row.get("name") or "").strip():
-            continue
-        try:
-            rank = int(row["rank"]) if row.get("rank") not in (None, "") else None
-        except ValueError:
-            rank = None
-        try:
-            adp = float(row["adp"]) if row.get("adp") not in (None, "") else None
-        except ValueError:
-            adp = None
-        _upsert_player(
-            db,
-            league,
-            PlayerImportRow(
-                player_id=(row.get("player_id") or "").strip(),
-                name=row["name"].strip(),
-                position=(row.get("position") or "").strip(),
-                nfl_team=(row.get("nfl_team") or "").strip(),
-                status=(row.get("status") or "available").strip(),
-                rank=rank,
-                adp=adp,
-            ),
-        )
-        count += 1
+    for row in rows:
+        _upsert_player(db, league, row)
     _commit(db)
     await _broadcast(league)
-    return {"ok": True, "imported": count}
+    return {"ok": True, "imported": len(rows)}
+
+
+@router.post("/draft/{token}/admin/import/text")
+async def import_players_text(
+    token: str, body: CsvTextIn, db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    if league.status != LeagueStatus.SETUP:
+        raise HTTPException(status_code=400, detail="Players can only be imported during setup")
+    rows = parse_players_csv(body.csv)
+    if not rows:
+        raise HTTPException(status_code=400, detail="Empty CSV text")
+    for row in rows:
+        _upsert_player(db, league, row)
+    _commit(db)
+    await _broadcast(league)
+    return {"ok": True, "imported": len(rows)}
+
+
+def _norm_key(value: str) -> str:
+    return (value or "").strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def parse_players_csv(raw: str) -> list[PlayerImportRow]:
+    """Parse a player/ranking CSV.
+
+    Auto-detects the FantasyPros export format
+    (RK,TIERS,PLAYER NAME,TEAM,POS,BYE WEEK,UPSIDE,BUST,SOS SEASON,ECR VS. ADP)
+    as well as the generic format
+    (player_id,name,position,nfl_team,status,rank,adp).
+    """
+    lines = [line for line in raw.splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    header_idx = 0
+    for i, line in enumerate(lines[:8]):
+        lowered = line.lower()
+        if "player name" in lowered or lowered.startswith("rk"):
+            header_idx = i
+            break
+
+    reader = csv.DictReader(io.StringIO("\n".join(lines[header_idx:])), skipinitialspace=True)
+    if reader.fieldnames is None:
+        return []
+
+    keys = {_norm_key(k): k for k in reader.fieldnames}
+    is_fantasypros = "player_name" in keys or (
+        "rk" in keys and "pos" in keys and "team" in keys
+    )
+
+    rows: list[PlayerImportRow] = []
+    for row in reader:
+        if is_fantasypros:
+            name = (row.get(keys.get("player_name", "")) or "").strip()
+            if not name:
+                continue
+            rk = _int_or_none(row.get(keys.get("rk", "")))
+            rows.append(
+                PlayerImportRow(
+                    player_id=(row.get(keys.get("player_id", "")) or "").strip(),
+                    name=name,
+                    position=(row.get(keys.get("pos", "")) or "").strip().upper(),
+                    nfl_team=(row.get(keys.get("team", "")) or "").strip().upper(),
+                    status="available",
+                    rank=rk,
+                    tier=(row.get(keys.get("tiers", "")) or "").strip(),
+                    bye_week=(row.get(keys.get("bye_week", "")) or "").strip(),
+                    upside=(row.get(keys.get("upside", "")) or "").strip(),
+                    bust=(row.get(keys.get("bust", "")) or "").strip(),
+                    sos_season=(row.get(keys.get("sos_season", "")) or "").strip(),
+                    ecr_vs_adp=(row.get(keys.get("ecr_vs_adp", "")) or "").strip(),
+                )
+            )
+        else:
+            name = (row.get(keys.get("name", "")) or "").strip()
+            if not name:
+                continue
+            rows.append(
+                PlayerImportRow(
+                    player_id=(row.get(keys.get("player_id", "")) or "").strip(),
+                    name=name,
+                    position=(row.get(keys.get("position", "")) or "").strip().upper(),
+                    nfl_team=(row.get(keys.get("nfl_team", "")) or "").strip().upper(),
+                    status=(row.get(keys.get("status", "")) or "available").strip(),
+                    rank=_int_or_none(row.get(keys.get("rank", ""))),
+                    adp=_float_or_none(row.get(keys.get("adp", ""))),
+                )
+            )
+    return rows
+
+
+def _int_or_none(value: str | None) -> int | None:
+    if value is None or not str(value).strip():
+        return None
+    try:
+        return int(float(str(value).strip().replace(",", "")))
+    except ValueError:
+        return None
+
+
+def _float_or_none(value: str | None) -> float | None:
+    if value is None or not str(value).strip():
+        return None
+    try:
+        return float(str(value).strip().replace(",", ""))
+    except ValueError:
+        return None
 
 
 def _upsert_player(db: Session, league: League, row: PlayerImportRow) -> None:
@@ -351,6 +442,22 @@ def _upsert_player(db: Session, league: League, row: PlayerImportRow) -> None:
         existing.position = row.position or existing.position
         existing.nfl_team = row.nfl_team or existing.nfl_team
         existing.status = row.status or existing.status
+    extra = {
+        key: value
+        for key, value in {
+            "tier": row.tier,
+            "bye_week": row.bye_week,
+            "upside": row.upside,
+            "bust": row.bust,
+            "sos_season": row.sos_season,
+            "ecr_vs_adp": row.ecr_vs_adp,
+        }.items()
+        if value not in (None, "")
+    }
+    if extra:
+        merged = dict(existing.extra or {})
+        merged.update(extra)
+        existing.extra = merged
     if row.rank is not None:
         ranking = db.scalar(
             select(Ranking).where(

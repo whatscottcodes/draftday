@@ -96,6 +96,8 @@ def build_draft_state(db: Session, league: League) -> dict:
                 "position": player.position,
                 "nfl_team": player.nfl_team,
                 "rank": rank,
+                "bye_week": (player.extra or {}).get("bye_week"),
+                "tier": (player.extra or {}).get("tier"),
             }
         )
 
@@ -196,6 +198,8 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
             "position": p.position,
             "nfl_team": p.nfl_team,
             "rank": rank,
+            "bye_week": (p.extra or {}).get("bye_week"),
+            "tier": (p.extra or {}).get("tier"),
         }
         for p, rank in avail
     ]

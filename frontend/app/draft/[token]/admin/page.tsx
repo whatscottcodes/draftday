@@ -135,28 +135,17 @@ export default function AdminPage({
   }
 
   async function importCsvText() {
-    const rows: string[][] = [];
-    for (const line of csvText.split("\n")) {
-      const cells = line.split(",").map((c) => c.trim());
-      if (cells.length && cells[0]) rows.push(cells);
-    }
-    const payload = rows.map((c) => ({
-      player_id: c[0],
-      name: c[1] ?? "",
-      position: c[2] ?? "",
-      nfl_team: c[3] ?? "",
-      status: c[4] ?? "available",
-      rank: c[5] ? Number(c[5]) : null,
-      adp: c[6] ? Number(c[6]) : null,
-    }));
-    const ok = await action(
-      "POST",
-      `/api/draft/${token}/admin/import/json`,
-      { players: payload },
-    );
-    if (ok) {
-      flash(true, `Imported ${payload.length} players`);
+    if (!csvText.trim()) return;
+    try {
+      await apiJson(`/api/draft/${token}/admin/import/text`, {
+        method: "POST",
+        body: JSON.stringify({ csv: csvText }),
+      });
+      flash(true, "Players imported");
       setCsvText("");
+      await loadConfig();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import failed");
     }
   }
 
@@ -499,12 +488,13 @@ export default function AdminPage({
             }}
           />
           <span className="text-xs text-slate-600">
-            CSV columns: player_id,name,position,nfl_team,status,rank,adp
+            FantasyPros export or CSV columns:
+            player_id,name,position,nfl_team,status,rank,adp
           </span>
         </div>
         <textarea
           className="input h-24 font-mono text-xs"
-          placeholder="Or paste CSV lines here: player_id,name,position,nfl_team,status,rank,adp"
+          placeholder='Paste a CSV here — e.g. FantasyPros: RK,TIERS,"PLAYER NAME",TEAM,"POS","BYE WEEK",...'
           value={csvText}
           onChange={(e) => setCsvText(e.target.value)}
         />
@@ -531,6 +521,12 @@ export default function AdminPage({
                   </span>
                   <span className="text-slate-600">{p.position}</span>
                   <span className="text-slate-600">{p.nfl_team}</span>
+                  {p.bye_week && (
+                    <span className="text-slate-600">BYE {p.bye_week}</span>
+                  )}
+                  {p.tier && (
+                    <span className="text-amber-500/80">Tier {p.tier}</span>
+                  )}
                   {p.taken && <span className="text-emerald-500">taken</span>}
                 </li>
               ))}

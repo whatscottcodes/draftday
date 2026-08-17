@@ -96,6 +96,7 @@ class Player(Base):
     position: Mapped[str] = mapped_column(String(10), default="")
     nfl_team: Mapped[str] = mapped_column(String(10), default="")
     status: Mapped[str] = mapped_column(String(20), default="available")
+    extra: Mapped[dict] = mapped_column(JSON, default=dict)
 
     league: Mapped[League] = relationship(back_populates="players")
     rankings: Mapped[list["Ranking"]] = relationship(
