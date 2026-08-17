@@ -72,6 +72,9 @@ class League(Base):
     keepers: Mapped[list["Keeper"]] = relationship(
         back_populates="league", cascade="all, delete-orphan"
     )
+    keeper_candidates: Mapped[list["KeeperCandidate"]] = relationship(
+        back_populates="league", cascade="all, delete-orphan"
+    )
     picks: Mapped[list["Pick"]] = relationship(
         back_populates="league", cascade="all, delete-orphan"
     )
@@ -92,6 +95,9 @@ class Team(Base):
 
     league: Mapped[League] = relationship(back_populates="teams")
     keepers: Mapped[list["Keeper"]] = relationship(
+        back_populates="team", cascade="all, delete-orphan"
+    )
+    keeper_candidates: Mapped[list["KeeperCandidate"]] = relationship(
         back_populates="team", cascade="all, delete-orphan"
     )
     picks: Mapped[list["Pick"]] = relationship(back_populates="team")
@@ -118,6 +124,9 @@ class Player(Base):
         back_populates="player", cascade="all, delete-orphan"
     )
     keepers: Mapped[list["Keeper"]] = relationship(back_populates="player")
+    keeper_candidates: Mapped[list["KeeperCandidate"]] = relationship(
+        back_populates="player"
+    )
     picks: Mapped[list["Pick"]] = relationship(back_populates="player")
 
     __table_args__ = (
@@ -174,6 +183,31 @@ class Keeper(Base):
     league: Mapped[League] = relationship(back_populates="keepers")
     team: Mapped[Team] = relationship(back_populates="keepers")
     player: Mapped[Player] = relationship(back_populates="keepers")
+
+
+class KeeperCandidate(Base):
+    __tablename__ = "keeper_candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    league_id: Mapped[int] = mapped_column(ForeignKey("leagues.id"), index=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    player_id: Mapped[int] = mapped_column(ForeignKey("players.id"), index=True)
+    player_name: Mapped[str] = mapped_column(String(200))
+    position: Mapped[str] = mapped_column(String(10), default="")
+    cost_round: Mapped[int] = mapped_column(Integer)
+    years_kept: Mapped[int] = mapped_column(Integer, default=0)
+    keepable_until_year: Mapped[str] = mapped_column(String(20), default="")
+    source: Mapped[str] = mapped_column(String(20), default="import")
+
+    league: Mapped[League] = relationship(back_populates="keeper_candidates")
+    team: Mapped[Team] = relationship(back_populates="keeper_candidates")
+    player: Mapped[Player] = relationship(back_populates="keeper_candidates")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "league_id", "team_id", "player_id", name="uq_league_team_candidate"
+        ),
+    )
 
 
 class Pick(Base):

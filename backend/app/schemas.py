@@ -53,6 +53,10 @@ class KeeperIn(BaseModel):
     round: int = Field(ge=1)
 
 
+class KeeperPickIn(BaseModel):
+    player_id: int
+
+
 class PickIn(BaseModel):
     slot_id: int | None = None
     team_id: int | None = None
@@ -145,6 +149,9 @@ class TeamState(BaseModel):
     my_next_slot: dict | None = None
     roster: list[dict] = []
     keepers: list[dict] = []
+    keeper_candidates: list[dict] = []
+    keeper_count: int = 0
+    max_keepers: int = 3
     recent_picks: list[dict] = []
     upcoming_picks: list[dict] = []
     next_picks: list[dict] = []

@@ -19,11 +19,18 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..draft import engine, state as state_builder, validation
 from ..draft.engine import DraftError
+from ..draft.keepers import (
+    candidate_dict,
+    clear_candidates,
+    import_candidate_rows,
+    parse_candidate_csv,
+)
 from ..models import (
     DEFAULT_ROSTER_SLOTS,
     DraftEvent,
     DraftSlot,
     Keeper,
+    KeeperCandidate,
     League,
     LeagueStatus,
     Pick,
@@ -34,6 +41,7 @@ from ..models import (
 from ..schemas import (
     DraftState,
     KeeperIn,
+    KeeperPickIn,
     LeagueCreate,
     LeagueCreated,
     CsvTextIn,
@@ -239,6 +247,18 @@ def admin_config(token: str, db: Session = Depends(get_db)):
             }
             for k in keepers
         ],
+        "keeper_candidates": [
+            {
+                **candidate_dict(c, False),
+                "team_id": c.team_id,
+                "team_name": c.team.name,
+            }
+            for c in db.scalars(
+                select(KeeperCandidate)
+                .where(KeeperCandidate.league_id == league.id)
+                .order_by(KeeperCandidate.cost_round, KeeperCandidate.player_name)
+            )
+        ],
         "players": [
             {
                 "id": p.id,
@@ -312,6 +332,20 @@ async def create_keeper(token: str, body: KeeperIn, db: Session = Depends(get_db
     return {"ok": True}
 
 
+@router.delete("/draft/{token}/admin/keepers/candidates")
+async def clear_keeper_candidates(token: str, db: Session = Depends(get_db)):
+    league = _get_league(db, token)
+    if league.status not in (LeagueStatus.SETUP, LeagueStatus.READY):
+        raise HTTPException(
+            status_code=400,
+            detail="Keepers can only be changed before the draft starts",
+        )
+    count = clear_candidates(db, league)
+    _commit(db)
+    await _broadcast(league)
+    return {"ok": True, "cleared": count}
+
+
 @router.delete("/draft/{token}/admin/keepers/{keeper_id}")
 async def delete_keeper(token: str, keeper_id: int, db: Session = Depends(get_db)):
     league = _get_league(db, token)
@@ -322,6 +356,32 @@ async def delete_keeper(token: str, keeper_id: int, db: Session = Depends(get_db
     _commit(db)
     await _broadcast(league)
     return {"ok": True}
+
+
+@router.post("/draft/{token}/admin/import/keepers")
+async def import_keepers(
+    token: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    if league.status not in (LeagueStatus.SETUP, LeagueStatus.READY):
+        raise HTTPException(
+            status_code=400,
+            detail="Keepers can only be imported before the draft starts",
+        )
+    rows: list[dict] = []
+    warnings: list[str] = []
+    for file in files:
+        raw = (await file.read()).decode("utf-8-sig")
+        stem = (file.filename or "").rsplit(".", 1)[0].strip()
+        file_rows, file_warnings = parse_candidate_csv(raw, stem)
+        rows.extend(file_rows)
+        warnings.extend(file_warnings)
+    if not rows:
+        raise HTTPException(status_code=400, detail="No keeper candidates found")
+    stats = import_candidate_rows(db, league, rows, source="import")
+    _commit(db)
+    await _broadcast(league)
+    return {"ok": True, "stats": stats, "warnings": warnings}
 
 
 @router.post("/draft/{token}/admin/import/json")
@@ -681,6 +741,39 @@ async def team_pick(
     _commit(db)
     await _broadcast(league)
     return {"ok": True, "status": league.status}
+
+
+@router.post("/draft/{token}/team/{team_token}/keepers")
+async def team_create_keeper(
+    token: str, team_token: str, body: KeeperPickIn, db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    team = _get_team(db, league, team_token)
+    try:
+        engine.team_add_keeper(db, league, team, body.player_id)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _commit(db)
+    await _broadcast(league)
+    return {"ok": True}
+
+
+@router.delete("/draft/{token}/team/{team_token}/keepers/{keeper_id}")
+async def team_delete_keeper(
+    token: str, team_token: str, keeper_id: int, db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    team = _get_team(db, league, team_token)
+    keeper = db.get(Keeper, keeper_id)
+    if keeper is None or keeper.league_id != league.id or keeper.team_id != team.id:
+        raise HTTPException(status_code=404, detail="Keeper not found")
+    try:
+        engine.remove_keeper(db, league, keeper_id)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _commit(db)
+    await _broadcast(league)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------- websocket

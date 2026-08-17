@@ -354,3 +354,143 @@ def test_delete_league(client):
     assert c.get(f"/api/draft/{token}/admin/config").status_code == 404
     leagues = c.get("/api/leagues").json()
     assert all(l["id"] != data["id"] for l in leagues)
+
+
+def test_import_keeper_candidates_keepers_format(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    csv_text = (
+        "Team,Player,Keeper_2024,Keeper_2023,Round_2024,Round_2023,"
+        "Keeper_Eligible_2025,2025_Cost\n"
+        "Team 1,RB NYJ 9 Breece Hall,True,False,2,,True,1\n"
+        "Team 2,QB TEN 10 Will Levis,False,False,11,,True,10\n"
+    )
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/keepers",
+        files={"files": ("keepers.csv", csv_text, "text/csv")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["stats"]["created"] == 2
+
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    candidates = cfg["keeper_candidates"]
+    assert len(candidates) == 2
+    by_team = {k["team_name"]: k for k in candidates}
+    brece = by_team["Team 1"]
+    assert brece["player_name"] == "Breece Hall"
+    assert brece["position"] == "RB"
+    assert brece["cost_round"] == 1
+    assert brece["years_kept"] == 1
+    assert by_team["Team 2"]["cost_round"] == 10
+    assert by_team["Team 2"]["years_kept"] == 0
+    assert len(cfg["players"]) == 2
+
+
+def test_team_self_select_keepers_and_lock(client):
+    c, _ = client
+    payload = {
+        "name": "Test League",
+        "season": "2026",
+        "num_teams": 4,
+        "num_rounds": 3,
+        "teams": [{"name": f"Team {i}", "manager_name": f"Mgr {i}"} for i in range(1, 5)],
+    }
+    data = c.post("/api/leagues", json=payload).json()
+    token = data["access_token"]
+    roster_csv = (
+        "name,player_id,position_type,team,selected_position,was_added,2025_Cost\n"
+        "Player 1,p1,O,NFL,QB,False,1.0\n"
+        "Player 2,p2,O,NFL,RB,False,2.0\n"
+        "Player 3,p3,O,NFL,WR,False,3.0\n"
+        "Player 4,p4,O,NFL,RB,False,2.0\n"
+        "Player 5,p5,O,NFL,TE,False,2.0\n"
+    )
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/keepers",
+        files={"files": ("Team 1.csv", roster_csv, "text/csv")},
+    )
+    assert resp.status_code == 200
+    team2_csv = (
+        "name,player_id,position_type,team,selected_position,was_added,2025_Cost\n"
+        "Player 6,p6,O,NFL,QB,False,1.0\n"
+    )
+    c.post(
+        f"/api/draft/{token}/admin/import/keepers",
+        files={"files": ("Team 2.csv", team2_csv, "text/csv")},
+    )
+
+    team1 = data["teams"][0]["access_token"]
+    state = c.get(f"/api/draft/{token}/team/{team1}").json()
+    assert state["status"] == "SETUP"
+    assert len(state["keeper_candidates"]) == 5
+    assert state["max_keepers"] == 3
+    assert state["keeper_count"] == 0
+
+    # Select up to 3 keepers (rounds 1, 2, 3 — distinct slots).
+    state = c.get(f"/api/draft/{token}/team/{team1}").json()
+    by_name = {k["player_name"]: k["player_id"] for k in state["keeper_candidates"]}
+    for name in ["Player 1", "Player 2", "Player 3"]:
+        assert (
+            c.post(
+                f"/api/draft/{token}/team/{team1}/keepers",
+                json={"player_id": by_name[name]},
+            ).status_code
+            == 200
+        )
+    # A 4th keeper is rejected.
+    assert (
+        c.post(
+            f"/api/draft/{token}/team/{team1}/keepers",
+            json={"player_id": by_name["Player 5"]},
+        ).status_code
+        == 400
+    )
+    # Teams cannot keep another team's candidate.
+    p6 = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    p6 = next(p for p in p6 if p["name"] == "Player 6")
+    assert (
+        c.post(
+            f"/api/draft/{token}/team/{team1}/keepers",
+            json={"player_id": p6["id"]},
+        ).status_code
+        == 400
+    )
+
+    state = c.get(f"/api/draft/{token}/team/{team1}").json()
+    assert state["keeper_count"] == 3
+    assert len(state["keepers"]) == 3
+
+    # Candidates reflect selections.
+    assert sum(1 for k in state["keeper_candidates"] if k["selected"]) == 3
+
+    # Selections lock once the draft starts.
+    assert c.post(f"/api/draft/{token}/admin/start").status_code == 200
+    state = c.get(f"/api/draft/{token}/team/{team1}").json()
+    assert state["keeper_candidates"] == []
+    assert (
+        c.post(
+            f"/api/draft/{token}/team/{team1}/keepers",
+            json={"player_id": by_name["Player 4"]},
+        ).status_code
+        == 400
+    )
+
+
+def test_clear_keeper_candidates(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    csv_text = (
+        "name,player_id,position_type,team,selected_position,was_added,2025_Cost\n"
+        "Player 1,p1,O,NFL,RB,False,2.0\n"
+    )
+    c.post(
+        f"/api/draft/{token}/admin/import/keepers",
+        files={"files": ("Team 1.csv", csv_text, "text/csv")},
+    )
+    resp = c.delete(f"/api/draft/{token}/admin/keepers/candidates")
+    assert resp.status_code == 200
+    assert resp.json()["cleared"] == 1
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    assert cfg["keeper_candidates"] == []

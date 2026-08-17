@@ -5,8 +5,17 @@ import re
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import DEFAULT_ROSTER_SLOTS, DraftSlot, Keeper, League, Pick, Team
+from ..models import (
+    DEFAULT_ROSTER_SLOTS,
+    DraftSlot,
+    Keeper,
+    KeeperCandidate,
+    League,
+    Pick,
+    Team,
+)
 from . import engine
+from .keepers import MAX_KEEPERS_PER_TEAM, candidate_dict
 
 FLEX_POSITIONS = {"RB", "WR", "TE"}
 DEF_POSITIONS = {"DST", "DEF"}
@@ -275,6 +284,28 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
         for p, rank in avail
     ]
 
+    keeper_candidates: list[dict] = []
+    if league.status in ("SETUP", "READY"):
+        selected = {
+            k.player_id
+            for k in db.scalars(
+                select(Keeper).where(
+                    Keeper.league_id == league.id, Keeper.team_id == team.id
+                )
+            )
+        }
+        keeper_candidates = [
+            candidate_dict(c, c.player_id in selected)
+            for c in db.scalars(
+                select(KeeperCandidate)
+                .where(
+                    KeeperCandidate.league_id == league.id,
+                    KeeperCandidate.team_id == team.id,
+                )
+                .order_by(KeeperCandidate.cost_round, KeeperCandidate.player_name)
+            )
+        ]
+
     return {
         "league_id": league.id,
         "league_name": league.name,
@@ -290,6 +321,9 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
         "roster_by_slot": roster_by_slot,
         "bench": bench,
         "keepers": keepers,
+        "keeper_candidates": keeper_candidates,
+        "keeper_count": len(keepers),
+        "max_keepers": MAX_KEEPERS_PER_TEAM,
         "recent_picks": state["recent_picks"],
         "upcoming_picks": upcoming,
         "next_picks": next_picks,

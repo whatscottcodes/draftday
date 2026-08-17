@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..models import (
     DraftEvent,
     DraftSlot,
     Keeper,
+    KeeperCandidate,
     League,
     LeagueStatus,
     Pick,
@@ -111,6 +112,9 @@ def update_draft_slot_owner(
     return slot
 
 
+MAX_KEEPERS_PER_TEAM = 3
+
+
 def add_keeper(
     db: Session, league: League, team_id: int, player_id: int, round_: int
 ) -> Keeper:
@@ -136,6 +140,15 @@ def add_keeper(
     )
     if taken is not None:
         raise DraftError("That player is already drafted")
+    count = db.scalar(
+        select(func.count())
+        .select_from(Keeper)
+        .where(Keeper.league_id == league.id, Keeper.team_id == team_id)
+    )
+    if count >= MAX_KEEPERS_PER_TEAM:
+        raise DraftError(
+            f"Teams can keep at most {MAX_KEEPERS_PER_TEAM} players"
+        )
     keeper = Keeper(
         league_id=league.id, team_id=team_id, player_id=player_id, round=round_
     )
@@ -170,6 +183,24 @@ def remove_keeper(db: Session, league: League, keeper_id: int) -> None:
         )
     )
     db.flush()
+
+
+def team_add_keeper(
+    db: Session, league: League, team: Team, player_id: int
+) -> Keeper:
+    """Allow a team to select one of its own keeper candidates."""
+    if league.status not in (LeagueStatus.SETUP, LeagueStatus.READY):
+        raise DraftError("Keepers can only be selected before the draft starts")
+    candidate = db.scalar(
+        select(KeeperCandidate).where(
+            KeeperCandidate.league_id == league.id,
+            KeeperCandidate.team_id == team.id,
+            KeeperCandidate.player_id == player_id,
+        )
+    )
+    if candidate is None:
+        raise DraftError("That player is not an available keeper for your team")
+    return add_keeper(db, league, team.id, player_id, candidate.cost_round)
 
 
 def current_slot(db: Session, league: League) -> DraftSlot | None:
@@ -409,6 +440,7 @@ def delete_league(db: Session, league: League) -> None:
     db.execute(delete(DraftEvent).where(DraftEvent.league_id == league_id))
     db.execute(delete(Pick).where(Pick.league_id == league_id))
     db.execute(delete(Keeper).where(Keeper.league_id == league_id))
+    db.execute(delete(KeeperCandidate).where(KeeperCandidate.league_id == league_id))
     db.execute(delete(Ranking).where(Ranking.league_id == league_id))
     db.execute(delete(DraftSlot).where(DraftSlot.league_id == league_id))
     db.execute(delete(Player).where(Player.league_id == league_id))
