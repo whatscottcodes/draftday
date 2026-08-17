@@ -260,7 +260,7 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
                 if len(next_picks) == 3:
                     break
 
-    avail = engine.available_players(db, league, limit=200)
+    avail = engine.available_players(db, league)
     players = [
         {
             "player_id": p.id,
