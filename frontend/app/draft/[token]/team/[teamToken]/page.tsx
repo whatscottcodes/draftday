@@ -152,11 +152,11 @@ export default function TeamPage({
             {state.recent_picks.slice(0, 3).map((p) => (
               <span
                 key={p.id}
-                className="badge bg-slate-800 text-slate-200 border border-slate-700"
+                className="badge bg-slate-800 text-slate-200 border border-slate-700 gap-1.5"
               >
-                <span className="text-slate-500">#{p.pick_number}</span>{" "}
-                <span className="font-semibold">{p.player_name}</span>{" "}
-                <PositionBadge position={p.position} size="xs" />{" "}
+                <span className="text-slate-500">#{p.pick_number}</span>
+                <span className="font-semibold">{p.player_name}</span>
+                <PositionBadge position={p.position} size="xs" />
                 <span className="text-slate-500">{p.team_name}</span>
               </span>
             ))}
@@ -174,9 +174,9 @@ export default function TeamPage({
             {state.next_picks.map((s) => (
               <span
                 key={s.pick_number}
-                className="badge border border-slate-700 bg-slate-900 text-slate-300"
+                className="badge border border-slate-700 bg-slate-900 text-slate-300 gap-1.5"
               >
-                <span className="text-slate-500">#{s.pick_number}</span>{" "}
+                <span className="text-slate-500">#{s.pick_number}</span>
                 <span className="font-semibold">{s.drafting_team_name}</span>
                 <span className="text-slate-500">R{s.round}</span>
               </span>
