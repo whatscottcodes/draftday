@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 
 from fastapi import WebSocket
@@ -19,12 +20,18 @@ class ConnectionManager:
             self._connections.pop(league_id, None)
 
     async def broadcast(self, league_id: int, message: dict) -> None:
+        sockets = list(self._connections.get(league_id, ()))
+        if not sockets:
+            return
         stale: list[WebSocket] = []
-        for ws in list(self._connections.get(league_id, ())):
+
+        async def send_one(ws: WebSocket) -> None:
             try:
-                await ws.send_json(message)
+                await asyncio.wait_for(ws.send_json(message), timeout=5)
             except Exception:
                 stale.append(ws)
+
+        await asyncio.gather(*(send_one(ws) for ws in sockets))
         for ws in stale:
             self.disconnect(league_id, ws)
 
