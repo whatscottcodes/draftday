@@ -42,6 +42,7 @@ export default function KeeperAdminPage({
 
   // Review
   const [review, setReview] = useState<KeeperPreviewTeam[]>([]);
+  const [lastRun, setLastRun] = useState<string | null>(null);
 
   const editable = setup?.league.editable ?? false;
 
@@ -243,16 +244,24 @@ export default function KeeperAdminPage({
   }
 
   async function identify() {
+    const t0 = performance.now();
     const body = await postJson(
       `/api/draft/${token}/admin/keepers/identify`,
       {},
-      "Identifying keepers…",
+      "Running keeper identification…",
     );
     if (body) {
+      const ms = Math.max(1, Math.round(performance.now() - t0));
+      const teams = (body.preview as KeeperPreviewTeam[]).length;
+      const warnings = (body.warnings as string[]).length;
       setReview(body.preview as KeeperPreviewTeam[]);
+      setLastRun(
+        `${body.total} keepable players across ${teams} teams in ${ms}ms` +
+          (warnings ? ` · ${warnings} warnings` : ""),
+      );
       flash(
         true,
-        `${body.total} keepable players identified`,
+        `Identified ${body.total} keepable players across ${teams} teams`,
       );
       await loadSetup();
     }
@@ -374,6 +383,16 @@ export default function KeeperAdminPage({
 
       {error && <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>}
       {notice && <div className="rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-300">{notice}</div>}
+
+      {busy && (
+        <div className="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-emerald-300" role="status">
+          <span
+            className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent"
+            aria-hidden="true"
+          />
+          <span className="font-semibold">{busy}</span>
+        </div>
+      )}
 
       {/* Step 1: previous-season drafts */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
@@ -651,9 +670,21 @@ export default function KeeperAdminPage({
             <span className="text-xs text-slate-500">saved {setup.preview.saved_at}</span>
           )}
         </div>
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button className="btn-primary" onClick={identify} disabled={!!busy}>
-            Identify keepable players
+        <div className="flex flex-wrap gap-2 mb-2">
+          <button
+            className="btn-primary inline-flex items-center gap-2"
+            onClick={identify}
+            disabled={!!busy}
+          >
+            {busy === "Running keeper identification…" && (
+              <span
+                className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent"
+                aria-hidden="true"
+              />
+            )}
+            {busy === "Running keeper identification…"
+              ? "Identifying…"
+              : "Identify keepable players"}
           </button>
           <button
             className="btn-primary"
@@ -666,6 +697,14 @@ export default function KeeperAdminPage({
             Export per-team CSVs
           </button>
         </div>
+        {lastRun && (
+          <p className="mb-3 text-xs text-slate-400">
+            Last run: <span className="text-emerald-300 font-semibold">{lastRun}</span>
+          </p>
+        )}
+        <p className="mb-3 text-xs text-slate-600">
+          Computes costs from the drafts, rosters, and mappings loaded above.
+        </p>
         {setup.preview.warnings.length > 0 && (
           <ul className="mb-4 space-y-0.5 text-xs text-amber-300/90 bg-amber-900/20 rounded-lg p-2">
             {setup.preview.warnings.map((w, i) => (
