@@ -37,6 +37,7 @@ Backend (port 8000):
 cd backend
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e .   # makes the `app` package importable
 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
@@ -59,11 +60,11 @@ NEXT_PUBLIC_API_URL=http://<host>:8000 npm run dev
 
 ```bash
 cd backend
-PYTHONPATH=. .venv/bin/python -m pytest -q
+.venv/bin/python -m pytest -q
 ```
 
 `tests/e2e_flow.py` runs a full draft against a live server
-(start the backend, then `PYTHONPATH=. .venv/bin/python tests/e2e_flow.py`).
+(start the backend, then `.venv/bin/python tests/e2e_flow.py`).
 
 ## Draft model
 
