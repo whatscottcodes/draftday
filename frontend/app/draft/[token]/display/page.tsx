@@ -2,6 +2,7 @@
 
 import { use } from "react";
 import { DraftBoard } from "@/components/DraftBoard";
+import { PositionBadge } from "@/components/PositionBadge";
 import { useDraftState } from "@/hooks/useDraftState";
 import { API_URL } from "@/lib/api";
 
@@ -77,9 +78,8 @@ export default function DisplayPage({
             >
               <span className="text-slate-500">#{p.pick_number}</span>{" "}
               <span className="text-emerald-400">{p.player_name}</span>{" "}
-              <span className="text-slate-500">
-                ({p.position}) — {p.team_name}
-              </span>
+              <PositionBadge position={p.position} />{" "}
+              <span className="text-slate-500">— {p.team_name}</span>
             </div>
           ))}
         </div>
@@ -101,7 +101,8 @@ export default function DisplayPage({
                 {p.rank !== null && (
                   <span className="text-slate-500 mr-1">{p.rank}.</span>
                 )}
-                {p.name} <span className="text-slate-500 ml-1">{p.position}</span>
+                {p.name}{" "}
+                <PositionBadge position={p.position} size="xs" />
                 {p.bye_week && (
                   <span className="text-slate-600 ml-1">BYE {p.bye_week}</span>
                 )}

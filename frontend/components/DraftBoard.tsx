@@ -1,6 +1,7 @@
 "use client";
 
 import type { BoardSlot, DraftState } from "@/lib/types";
+import { PositionBadge } from "@/components/PositionBadge";
 
 const STATUS_COLORS: Record<string, string> = {
   OPEN: "border-slate-700 bg-slate-900/60 text-slate-400",
@@ -72,9 +73,13 @@ export function DraftBoard({ state }: { state: DraftState }) {
                           )}
                         </div>
                         {slot.player_name && (
-                          <div className="text-[10px] text-slate-500">
-                            {slot.position}
-                            {slot.nfl_team ? ` · ${slot.nfl_team}` : ""}
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <PositionBadge position={slot.position ?? ""} size="xs" />
+                            {slot.nfl_team && (
+                              <span className="text-[10px] text-slate-500">
+                                {slot.nfl_team}
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>

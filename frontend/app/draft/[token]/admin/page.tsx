@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useRef, useState } from "react";
 import { apiJson, connectDraftSocket } from "@/lib/api";
 import type { AdminConfig, DraftState } from "@/lib/types";
+import { PositionBadge } from "@/components/PositionBadge";
 
 export default function AdminPage({
   params,
@@ -454,9 +455,10 @@ export default function AdminPage({
               key={k.keeper_id}
               className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5"
             >
-              <span className="font-semibold">{k.player_name}</span>
+              <span className="font-semibold">{k.player_name}</span>{" "}
+              <PositionBadge position={k.position} size="xs" />{" "}
               <span className="text-slate-500">
-                ({k.position}) → {k.team_name} · round {k.round}
+                → {k.team_name} · round {k.round}
               </span>
               {editable && (
                 <button
@@ -519,7 +521,7 @@ export default function AdminPage({
                   <span className={p.taken ? "line-through text-slate-600" : ""}>
                     {p.name}
                   </span>
-                  <span className="text-slate-600">{p.position}</span>
+                  <PositionBadge position={p.position} size="xs" />
                   <span className="text-slate-600">{p.nfl_team}</span>
                   {p.bye_week && (
                     <span className="text-slate-600">BYE {p.bye_week}</span>
@@ -564,8 +566,9 @@ export default function AdminPage({
               <li key={p.id} className="text-slate-400">
                 <span className="text-slate-600">#{p.pick_number}</span>{" "}
                 <span className="text-slate-100">{p.player_name}</span>{" "}
+                <PositionBadge position={p.position} size="xs" />{" "}
                 <span className="text-slate-500">
-                  ({p.position}) — {p.team_name}
+                  — {p.team_name}
                   {p.pick_type !== "live" && (
                     <span className="badge bg-amber-500/20 text-amber-300 ml-1">
                       {p.pick_type}

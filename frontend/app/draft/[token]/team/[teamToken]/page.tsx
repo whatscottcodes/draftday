@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { apiJson, connectDraftSocket } from "@/lib/api";
 import type { TeamState } from "@/lib/types";
+import { PositionBadge } from "@/components/PositionBadge";
 
 type SortKey = "rank" | "name";
 type Position = "ALL" | "QB" | "RB" | "WR" | "TE" | "K" | "DST";
@@ -156,8 +157,9 @@ export default function TeamPage({
               className="badge bg-slate-800 text-slate-200 border border-slate-700"
             >
               {p.player_name}{" "}
+              <PositionBadge position={p.position} size="xs" />{" "}
               <span className="text-slate-500">
-                {p.position} · R{p.round}
+                R{p.round}
                 {p.pick_type === "keeper" ? " · K" : ""}
               </span>
             </span>
@@ -229,11 +231,13 @@ export default function TeamPage({
               </span>
               <div className="flex-1 min-w-0">
                 <div className="font-semibold truncate">{p.name}</div>
-                <div className="text-xs text-slate-500">
-                  {p.position}
-                  {p.nfl_team ? ` · ${p.nfl_team}` : ""}
-                  {p.bye_week ? ` · BYE ${p.bye_week}` : ""}
-                  {p.tier ? ` · Tier ${p.tier}` : ""}
+                <div className="flex items-center gap-1 text-xs text-slate-500">
+                  <PositionBadge position={p.position} size="xs" />
+                  <span>
+                    {p.nfl_team ? ` · ${p.nfl_team}` : ""}
+                    {p.bye_week ? ` · BYE ${p.bye_week}` : ""}
+                    {p.tier ? ` · Tier ${p.tier}` : ""}
+                  </span>
                 </div>
               </div>
               {state.on_the_clock ? (
@@ -270,9 +274,8 @@ export default function TeamPage({
               <li key={p.id} className="text-slate-400">
                 <span className="text-slate-600">#{p.pick_number}</span>{" "}
                 <span className="text-slate-100">{p.player_name}</span>{" "}
-                <span className="text-slate-500">
-                  ({p.position}) — {p.team_name}
-                </span>
+                <PositionBadge position={p.position} size="xs" />{" "}
+                <span className="text-slate-500">— {p.team_name}</span>
               </li>
             ))}
           </ul>
