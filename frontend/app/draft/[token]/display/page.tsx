@@ -2,9 +2,9 @@
 
 import { use } from "react";
 import { DraftBoard } from "@/components/DraftBoard";
-import { PositionBadge } from "@/components/PositionBadge";
 import { useDraftState } from "@/hooks/useDraftState";
 import { API_URL } from "@/lib/api";
+import { positionColor } from "@/lib/positions";
 
 export default function DisplayPage({
   params,
@@ -74,12 +74,16 @@ export default function DisplayPage({
           {lastPicks.map((p) => (
             <div
               key={p.id}
-              className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm"
+              className="rounded-lg border px-3 py-1.5 text-sm font-medium"
+              style={{
+                backgroundColor: positionColor(p.position),
+                borderColor: positionColor(p.position),
+                color: "#0f172a",
+              }}
             >
-              <span className="text-slate-500">#{p.pick_number}</span>{" "}
-              <span className="text-emerald-400">{p.player_name}</span>{" "}
-              <PositionBadge position={p.position} />{" "}
-              <span className="text-slate-500">— {p.team_name}</span>
+              <span className="opacity-60">#{p.pick_number}</span>{" "}
+              <span className="font-bold">{p.player_name}</span>{" "}
+              <span className="opacity-70">— {p.team_name}</span>
             </div>
           ))}
         </div>
@@ -96,15 +100,19 @@ export default function DisplayPage({
             {state.top_available.slice(0, 12).map((p) => (
               <span
                 key={p.player_id}
-                className="badge border border-slate-800 bg-slate-900 text-slate-300"
+                className="badge font-medium"
+                style={{
+                  backgroundColor: positionColor(p.position),
+                  borderColor: positionColor(p.position),
+                  color: "#0f172a",
+                }}
               >
                 {p.rank !== null && (
-                  <span className="text-slate-500 mr-1">{p.rank}.</span>
+                  <span className="opacity-60 mr-1">{p.rank}.</span>
                 )}
-                {p.name}{" "}
-                <PositionBadge position={p.position} size="xs" />
+                {p.name}
                 {p.bye_week && (
-                  <span className="text-slate-600 ml-1">BYE {p.bye_week}</span>
+                  <span className="opacity-60 ml-1">BYE {p.bye_week}</span>
                 )}
               </span>
             ))}

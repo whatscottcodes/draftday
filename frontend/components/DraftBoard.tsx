@@ -1,13 +1,15 @@
 "use client";
 
 import type { BoardSlot, DraftState } from "@/lib/types";
-import { PositionBadge } from "@/components/PositionBadge";
+import { positionColor } from "@/lib/positions";
 
 const STATUS_COLORS: Record<string, string> = {
   OPEN: "border-slate-700 bg-slate-900/60 text-slate-400",
   FILLED: "border-slate-700 bg-slate-800 text-slate-200",
   KEEPER: "border-amber-700 bg-amber-900/30 text-amber-200",
 };
+
+const CARD_TEXT = "#0f172a";
 
 export function DraftBoard({ state }: { state: DraftState }) {
   const teams = [...state.teams].sort((a, b) => a.draft_position - b.draft_position);
@@ -49,39 +51,45 @@ export function DraftBoard({ state }: { state: DraftState }) {
                   slot && slot.original_team_id !== slot.drafting_team_id;
                 return (
                   <td key={t.id} className="px-1 py-1">
-                    {slot ? (
+                    {slot && slot.player_name ? (
                       <div
-                        className={`rounded-md border px-1.5 py-1 ${STATUS_COLORS[slot.status]}`}
-                        title={slot.player_name ?? undefined}
+                        className="rounded-md border px-1.5 py-1"
+                        style={{
+                          backgroundColor: positionColor(slot.position ?? ""),
+                          borderColor: positionColor(slot.position ?? ""),
+                          color: CARD_TEXT,
+                        }}
+                        title={slot.player_name}
                       >
                         <div className="flex items-center justify-between gap-1">
                           <span className="truncate font-medium">
-                            {slot.player_name ?? "—"}
+                            {slot.player_name}
                           </span>
                           {slot.status === "KEEPER" && (
-                            <span className="badge bg-amber-500 text-slate-950">
+                            <span className="badge bg-slate-900/30 text-slate-900">
                               K
                             </span>
                           )}
                           {traded && (
                             <span
-                              className="badge bg-violet-500/20 text-violet-300"
+                              className="badge bg-slate-900/30 text-slate-900"
                               title={`Originated with ${originalTeamName(state, slot)}`}
                             >
                               {originalTeamShort(state, slot)}
                             </span>
                           )}
                         </div>
-                        {slot.player_name && (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <PositionBadge position={slot.position ?? ""} size="xs" />
-                            {slot.nfl_team && (
-                              <span className="text-[10px] text-slate-500">
-                                {slot.nfl_team}
-                              </span>
-                            )}
+                        {slot.nfl_team && (
+                          <div className="text-[10px] opacity-60">
+                            {slot.nfl_team}
                           </div>
                         )}
+                      </div>
+                    ) : slot ? (
+                      <div
+                        className={`rounded-md border px-1.5 py-1 ${STATUS_COLORS[slot.status]}`}
+                      >
+                        —
                       </div>
                     ) : (
                       <div className="rounded-md border border-dashed border-slate-800 px-1.5 py-1 text-slate-700">
