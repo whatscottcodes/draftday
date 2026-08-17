@@ -79,11 +79,10 @@ export function DraftBoard({ state }: { state: DraftState }) {
                             </span>
                           )}
                         </div>
-                        {slot.nfl_team && (
-                          <div className="text-[10px] opacity-60">
-                            {slot.nfl_team}
-                          </div>
-                        )}
+                        <div className="text-[10px] font-bold opacity-80">
+                          {slot.position}
+                          {slot.nfl_team ? ` · ${slot.nfl_team}` : ""}
+                        </div>
                       </div>
                     ) : slot ? (
                       <div

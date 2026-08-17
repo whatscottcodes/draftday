@@ -83,6 +83,7 @@ export default function DisplayPage({
             >
               <span className="opacity-60">#{p.pick_number}</span>{" "}
               <span className="font-bold">{p.player_name}</span>{" "}
+              <span className="font-black">{p.position}</span>{" "}
               <span className="opacity-70">— {p.team_name}</span>
             </div>
           ))}
@@ -111,6 +112,7 @@ export default function DisplayPage({
                   <span className="opacity-60 mr-1">{p.rank}.</span>
                 )}
                 {p.name}
+                <span className="ml-1 font-black">{p.position}</span>
                 {p.bye_week && (
                   <span className="opacity-60 ml-1">BYE {p.bye_week}</span>
                 )}
