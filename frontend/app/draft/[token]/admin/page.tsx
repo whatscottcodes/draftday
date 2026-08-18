@@ -31,21 +31,35 @@ export default function AdminPage({
   }, [config]);
 
   const loadConfig = useCallback(async () => {
-    try {
-      setConfig(
-        await apiJson<AdminConfig>(`/api/draft/${token}/admin/config`),
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        setConfig(
+          await apiJson<AdminConfig>(`/api/draft/${token}/admin/config`),
+        );
+        setError(null);
+        return;
+      } catch (e) {
+        if (attempt === 4) {
+          setError(e instanceof Error ? e.message : "Failed to load");
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        }
+      }
     }
   }, [token]);
+
+  const configRef = useRef<AdminConfig | null>(null);
+  configRef.current = config;
 
   useEffect(() => {
     let ws: WebSocket;
     let closed = false;
     loadConfig();
     const openSocket = () => {
-      ws = connectDraftSocket(token, setState, setConnected);
+      ws = connectDraftSocket(token, setState, (ok) => {
+        setConnected(ok);
+        if (ok && !configRef.current) loadConfig();
+      });
     };
     openSocket();
     const retry = setInterval(() => {
