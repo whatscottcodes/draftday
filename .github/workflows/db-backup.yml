@@ -9,14 +9,15 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install postgres client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
       - name: Dump database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          pg_dump "$DATABASE_URL" --format=custom --file=draftnight-$(date +%F).dump
+          docker run --rm \
+            -v "$PWD:/backup" \
+            -e DATABASE_URL="$DATABASE_URL" \
+            postgres:17 \
+            pg_dump "$DATABASE_URL" --format=custom --file=/backup/draftnight-$(date +%F).dump
 
       - name: Upload backup artifact
         uses: actions/upload-artifact@v4
