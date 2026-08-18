@@ -45,7 +45,7 @@ body {
 
   /* Web 1.0 Beveled Buttons */
   .btn {
-    @apply rounded-none px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-none disabled:opacity-40 disabled:cursor-not-allowed select-none;
+    @apply rounded-none px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-none disabled:opacity-40 disabled:cursor-not-allowed select-none cursor-pointer;
     border-top: 2px solid rgba(255, 255, 255, 0.6);
     border-left: 2px solid rgba(255, 255, 255, 0.6);
     border-bottom: 2px solid #000000;

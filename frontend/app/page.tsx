@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { apiJson } from "@/lib/api";
+import { API_URL, apiJson } from "@/lib/api";
 import type { LeagueSummary, LeagueStatus } from "@/lib/types";
 
 interface TeamRow {
@@ -23,6 +23,7 @@ export default function Home() {
   const [numRounds, setNumRounds] = useState(15);
   const [teamNames, setTeamNames] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<CreatedLeague | null>(null);
   const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
 
@@ -43,6 +44,7 @@ export default function Home() {
 
   async function create() {
     setError(null);
+    setCreating(true);
     try {
       const res = await apiJson<CreatedLeague>("/api/leagues", {
         method: "POST",
@@ -57,6 +59,8 @@ export default function Home() {
       setCreated(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create league");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -253,9 +257,21 @@ export default function Home() {
 
           <button
             onClick={create}
+            disabled={creating}
             className="w-full btn btn-gold py-2.5 text-sm tracking-wider flex items-center justify-center gap-2"
           >
-            <span>⚡</span> INITIALIZE LEAGUE DRAFT <span>⚡</span>
+            {creating ? (
+              <>
+                <span className="animate-spin">⏳</span>
+                <span>INITIALIZING LEAGUE DRAFT…</span>
+              </>
+            ) : (
+              <>
+                <span>⚡</span>
+                <span>INITIALIZE LEAGUE DRAFT</span>
+                <span>⚡</span>
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -340,7 +356,7 @@ export default function Home() {
           </div>
         </div>
         <p className="text-[10px] text-slate-500 font-mono">
-          ★ DRAFT NIGHT V1.0 • BEST VIEWED IN 1024x768 • POWERED BY NEXT.JS, FASTAPI & SUPABASE ★
+          ★ DRAFT NIGHT V1.0 • BEST VIEWED IN 1024x768 • BACKEND: {API_URL} ★
         </p>
       </footer>
     </main>
