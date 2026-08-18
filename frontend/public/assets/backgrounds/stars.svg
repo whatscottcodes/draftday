@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <rect width="64" height="64" fill="#060614"/>
+  <!-- tiny stars -->
+  <circle cx="12" cy="14" r="1" fill="#ffffff" opacity="0.9"/>
+  <circle cx="48" cy="8" r="0.8" fill="#ffffaa" opacity="0.8"/>
+  <circle cx="28" cy="38" r="1.2" fill="#88ccff" opacity="0.9"/>
+  <circle cx="56" cy="46" r="0.8" fill="#ffffff" opacity="0.7"/>
+  <circle cx="6" cy="54" r="1" fill="#ffccff" opacity="0.8"/>
+  <circle cx="38" cy="58" r="0.7" fill="#ffffff" opacity="0.6"/>
+  <!-- 4-point sparkle star -->
+  <path d="M22,18 L24,12 L26,18 L32,20 L26,22 L24,28 L22,22 L16,20 Z" fill="#ffffdd" opacity="0.85"/>
+  <path d="M44,40 L45,36 L46,40 L50,41 L46,42 L45,46 L44,42 L40,41 Z" fill="#aaddff" opacity="0.9"/>
+</svg>

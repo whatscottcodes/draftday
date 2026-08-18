@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,7 +17,7 @@ interface CreatedLeague {
 }
 
 export default function Home() {
-  const [name, setName] = useState("Draft Night");
+  const [name, setName] = useState("Draft Night 2002");
   const [season, setSeason] = useState("2026");
   const [numTeams, setNumTeams] = useState(12);
   const [numRounds, setNumRounds] = useState(15);
@@ -71,65 +72,137 @@ export default function Home() {
 
   if (created) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-        <div className="max-w-2xl w-full">
-          <h1 className="text-3xl font-bold mb-2">{name}</h1>
-          <p className="text-slate-400 mb-6">
-            League created. Share these links with your league:
-          </p>
-          <div className="space-y-3">
-            <LinkRow
-              label="Commissioner console"
-              href={`/draft/${created.access_token}/admin`}
-              desc="Configure teams, keepers, slots and run the draft."
-            />
-            <LinkRow
-              label="TV / Display"
-              href={`/draft/${created.access_token}/display`}
-              desc="Read-only draft board for the projector."
-            />
-            {created.teams.map((t) => (
-              <LinkRow
-                key={t.draft_position}
-                label={`Team link — ${t.name}`}
-                href={`/draft/${created.access_token}/team/${t.access_token}`}
-                desc={`Drafting interface for ${t.name}.`}
-              />
-            ))}
+      <main className="min-h-screen text-slate-100 flex items-center justify-center p-4">
+        <div className="max-w-2xl w-full retro-panel border-2 border-t-slate-300 border-l-slate-300 border-b-black border-r-black bg-slate-950 p-0 shadow-[4px_4px_0px_#000000]">
+          <div className="retro-titlebar-gold">
+            <span className="flex items-center gap-1.5 font-black">
+              <span>🏆</span> LEAGUE CREATED SUCCESSFULLY
+            </span>
+            <span className="font-mono text-[10px] text-yellow-200">
+              [ 2002 EDITION ]
+            </span>
           </div>
-          <Link
-            href="/"
-            className="mt-8 inline-block text-emerald-400 hover:underline"
-          >
-            Create another league
-          </Link>
+
+          <div className="p-6 space-y-5">
+            <div>
+              <h1 className="text-2xl font-black glitter-text">{name}</h1>
+              <p className="text-xs text-yellow-300 font-mono mt-1">
+                ★ LEAGUE CREATION CONFIRMED — BOOKMARK & SHARE THESE LINKS ★
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <LinkRow
+                label="👑 COMMISSIONER CONSOLE"
+                href={`/draft/${created.access_token}/admin`}
+                desc="Configure keepers, draft order, traded picks, and run the draft clock."
+                highlight
+              />
+              <LinkRow
+                label="📺 TV / PROJECTOR DRAFT BOARD"
+                href={`/draft/${created.access_token}/display`}
+                desc="Full-screen read-only draft board for the big screen."
+              />
+              <div className="pt-2 pb-1 text-xs uppercase tracking-widest text-slate-400 font-bold border-b border-slate-800">
+                Team Draft Rooms ({created.teams.length} Teams)
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {created.teams.map((t) => (
+                  <LinkRow
+                    key={t.draft_position}
+                    label={`Pick #${t.draft_position}: ${t.name}`}
+                    href={`/draft/${created.access_token}/team/${t.access_token}`}
+                    desc={`Live drafting interface.`}
+                    compact
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-4 border-t border-slate-800 flex justify-between items-center">
+              <Link
+                href="/"
+                className="btn btn-secondary inline-flex items-center gap-1"
+              >
+                ← Create Another League
+              </Link>
+              <span className="text-[10px] text-slate-500 font-mono">
+                SECURE ACCESS TOKENS GENERATED
+              </span>
+            </div>
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
-      <div className="max-w-xl w-full space-y-6">
-        <div>
-          <h1 className="text-4xl font-black tracking-tight">
-            Draft<span className="text-emerald-400"> Night</span>
+    <main className="min-h-screen text-slate-100 flex flex-col items-center justify-start p-4 md:p-8 space-y-6">
+      {/* 90s Header Banner */}
+      <div className="max-w-2xl w-full text-center space-y-2 pt-2">
+        <div className="flex items-center justify-center gap-3">
+          <img
+            src="/assets/badges/football.svg"
+            alt="Football"
+            className="w-8 h-8 inline-block animate-bounce"
+          />
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight font-heading">
+            <span className="text-yellow-400 drop-shadow-[2px_2px_0px_#000000]">
+              DRAFT
+            </span>
+            <span className="text-cyan-400 drop-shadow-[2px_2px_0px_#000000]">
+              {" "}
+              NIGHT
+            </span>
           </h1>
-          <p className="text-slate-400 mt-1">
-            Private fantasy-football draft command center
-          </p>
+          <img
+            src="/assets/badges/football.svg"
+            alt="Football"
+            className="w-8 h-8 inline-block animate-bounce"
+          />
+        </div>
+        <p className="text-xs uppercase tracking-widest font-mono text-yellow-300 font-bold">
+          ★ PREMIER FANTASY FOOTBALL LIVE DRAFT COMMAND CENTER • EST. 2002 ★
+        </p>
+
+        {/* Retro Marquee */}
+        <div className="retro-marquee-container shadow-[2px_2px_0px_#000000]">
+          <div className="retro-marquee-content">
+            +++ WELCOME TO DRAFT NIGHT 2002 +++ REAL-TIME WEBSOCKET SYNC +++ NO
+            POP-UPS +++ KEEPER IMPORT SUPPORTED +++ NETSCAPE 4.0 CERTIFIED +++
+          </div>
+        </div>
+      </div>
+
+      {/* Main Form Window */}
+      <div className="max-w-2xl w-full retro-panel border-2 border-t-slate-300 border-l-slate-300 border-b-black border-r-black bg-slate-950 p-0 shadow-[4px_4px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span className="flex items-center gap-2">
+            <span>💾</span> CREATE NEW FANTASY LEAGUE
+          </span>
+          <div className="flex gap-1">
+            <button className="w-4 h-4 bg-slate-700 text-[9px] font-mono leading-none border border-slate-400 text-white font-bold">
+              _
+            </button>
+            <button className="w-4 h-4 bg-slate-700 text-[9px] font-mono leading-none border border-slate-400 text-white font-bold">
+              □
+            </button>
+            <button className="w-4 h-4 bg-red-800 text-[9px] font-mono leading-none border border-red-400 text-white font-bold">
+              ✕
+            </button>
+          </div>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="League name">
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="League Name">
               <input
                 className="input"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </Field>
-            <Field label="Season">
+            <Field label="Season Year">
               <input
                 className="input"
                 value={season}
@@ -137,10 +210,11 @@ export default function Home() {
               />
             </Field>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Teams">
+            <Field label="Total Teams">
               <input
-                className="input"
+                className="input font-mono"
                 type="number"
                 min={2}
                 max={32}
@@ -148,9 +222,9 @@ export default function Home() {
                 onChange={(e) => setNumTeams(Number(e.target.value))}
               />
             </Field>
-            <Field label="Rounds">
+            <Field label="Draft Rounds">
               <input
-                className="input"
+                className="input font-mono"
                 type="number"
                 min={1}
                 max={40}
@@ -159,78 +233,132 @@ export default function Home() {
               />
             </Field>
           </div>
-          <Field label="Team names (optional, one per line)">
+
+          <Field label="Team Names (Optional — One Per Line)">
             <textarea
-              className="input h-28 font-mono text-xs"
-              placeholder={"Team 1\nTeam 2\n..."}
+              className="input h-24 font-mono text-xs"
+              placeholder={"Team 1\nTeam 2\nTeam 3..."}
               value={teamNames.join("\n")}
               onChange={(e) =>
-                setTeamNames(
-                  e.target.value.split("\n").slice(0, numTeams),
-                )
+                setTeamNames(e.target.value.split("\n").slice(0, numTeams))
               }
             />
           </Field>
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+
+          {error && (
+            <div className="border-2 border-red-500 bg-red-950 p-2 text-red-200 text-xs font-mono font-bold">
+              ⚠️ ERROR: {error}
+            </div>
+          )}
+
           <button
             onClick={create}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl py-3"
+            className="w-full btn btn-gold py-2.5 text-sm tracking-wider flex items-center justify-center gap-2"
           >
-            Create league
+            <span>⚡</span> INITIALIZE LEAGUE DRAFT <span>⚡</span>
           </button>
         </div>
+      </div>
 
-        {leagues.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-bold text-slate-300">Existing drafts</h2>
+      {/* Existing Drafts Window */}
+      {leagues.length > 0 && (
+        <div className="max-w-2xl w-full retro-panel border-2 border-t-slate-300 border-l-slate-300 border-b-black border-r-black bg-slate-950 p-0 shadow-[4px_4px_0px_#000000]">
+          <div className="retro-titlebar-gold">
+            <span className="flex items-center gap-1.5 font-black">
+              <span>📂</span> ACTIVE LEAGUE DATABASE ({leagues.length})
+            </span>
+            <span className="text-[10px] font-mono text-yellow-300">
+              SUPABASE ONLINE
+            </span>
+          </div>
+
+          <div className="p-4 divide-y divide-slate-800">
             {leagues.map((l) => (
               <div
                 key={l.id}
-                className="flex items-center gap-3 bg-slate-900 border border-slate-800 rounded-xl p-4"
+                className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold truncate">{l.name}</span>
+                    <span className="font-bold text-sm text-yellow-300 truncate">
+                      {l.name}
+                    </span>
                     <StatusBadge status={l.status} />
                   </div>
-                  <p className="text-sm text-slate-400">
-                    {l.season} · {l.num_teams} teams · {l.num_rounds} rounds
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">
+                    Season {l.season} • {l.num_teams} Teams • {l.num_rounds} Rounds
                   </p>
                 </div>
-                <a
-                  href={`/draft/${l.access_token}/admin`}
-                  className="text-emerald-400 hover:underline text-sm shrink-0"
-                >
-                  Open
-                </a>
-                <button
-                  onClick={() => remove(l.id, l.access_token)}
-                  className="text-red-400 hover:text-red-300 text-sm shrink-0"
-                  title="Delete draft"
-                >
-                  Delete
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={`/draft/${l.access_token}/admin`}
+                    className="btn btn-primary text-xs"
+                  >
+                    Enter →
+                  </a>
+                  <button
+                    onClick={() => remove(l.id, l.access_token)}
+                    className="btn btn-danger text-xs"
+                    title="Delete Draft"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* 90s Web Badges Footer */}
+      <footer className="max-w-2xl w-full webring-footer space-y-3">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <img
+            src="/assets/badges/netscape.svg"
+            alt="Netscape Now 4.0"
+            className="h-8 border border-black"
+          />
+          <img
+            src="/assets/badges/ie.svg"
+            alt="Microsoft Internet Explorer 5.0"
+            className="h-8 border border-black"
+          />
+          <img
+            src="/assets/badges/under-construction.svg"
+            alt="Under Construction"
+            className="h-6"
+          />
+          <div className="flex items-center gap-1 bg-black border border-slate-700 px-2 py-1">
+            <span className="text-[10px] font-mono text-slate-400 uppercase">
+              VISITORS:
+            </span>
+            <img
+              src="/assets/badges/hit-counter.svg"
+              alt="Visitor Counter"
+              className="h-5"
+            />
+          </div>
+        </div>
+        <p className="text-[10px] text-slate-500 font-mono">
+          ★ DRAFT NIGHT V1.0 • BEST VIEWED IN 1024x768 • POWERED BY NEXT.JS, FASTAPI & SUPABASE ★
+        </p>
+      </footer>
     </main>
   );
 }
 
 function StatusBadge({ status }: { status: LeagueStatus }) {
-  const color =
+  const badgeStyle =
     status === "LIVE"
-      ? "bg-emerald-500/20 text-emerald-300"
+      ? "bg-emerald-950 text-emerald-300 border-emerald-500"
       : status === "COMPLETED"
-        ? "bg-sky-500/20 text-sky-300"
-        : "bg-slate-500/20 text-slate-300";
+        ? "bg-amber-950 text-amber-300 border-amber-500"
+        : "bg-slate-900 text-slate-300 border-slate-600";
   return (
     <span
-      className={`text-xs px-2 py-0.5 rounded-full border border-slate-700 ${color}`}
+      className={`text-[10px] font-mono font-black px-1.5 py-0.5 border ${badgeStyle}`}
     >
-      {status}
+      [{status}]
     </span>
   );
 }
@@ -244,7 +372,7 @@ function Field({
 }) {
   return (
     <label className="block space-y-1">
-      <span className="text-xs uppercase tracking-wider text-slate-400">
+      <span className="text-xs uppercase tracking-wider text-yellow-300 font-bold font-sans">
         {label}
       </span>
       {children}
@@ -256,18 +384,30 @@ function LinkRow({
   label,
   href,
   desc,
+  highlight = false,
+  compact = false,
 }: {
   label: string;
   href: string;
   desc: string;
+  highlight?: boolean;
+  compact?: boolean;
 }) {
   return (
     <a
       href={href}
-      className="block bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-emerald-500 transition-colors"
+      className={`block border-2 border-t-slate-500 border-l-slate-500 border-b-black border-r-black bg-slate-900 hover:bg-slate-800 transition-none ${
+        compact ? "p-2.5" : "p-3.5"
+      } ${highlight ? "border-amber-400 bg-amber-950/40" : ""}`}
     >
-      <div className="font-semibold text-emerald-400">{label}</div>
-      <div className="text-sm text-slate-400">{desc}</div>
+      <div
+        className={`font-black text-sm ${
+          highlight ? "text-yellow-300" : "text-cyan-400"
+        }`}
+      >
+        {label}
+      </div>
+      <div className="text-xs text-slate-400 mt-0.5">{desc}</div>
     </a>
   );
 }

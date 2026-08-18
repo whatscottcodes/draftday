@@ -7,6 +7,7 @@ import type {
   KeeperPreviewTeam,
   KeeperSetup,
 } from "@/lib/types";
+import { PositionBadge } from "@/components/PositionBadge";
 
 export default function KeeperAdminPage({
   params,
@@ -449,507 +450,650 @@ export default function KeeperAdminPage({
 
   if (error && !setup) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
-        <p className="text-red-400">{error}</p>
+      <main className="min-h-screen text-slate-100 flex items-center justify-center p-6">
+        <div className="retro-panel p-5 border-2 border-red-500 bg-red-950/80 max-w-sm text-center space-y-3">
+          <div className="text-2xl">⚠️</div>
+          <div className="font-bold text-sm text-red-200 uppercase">
+            Failed to Load Keeper Console
+          </div>
+          <p className="text-xs text-red-300 font-mono">{error}</p>
+          <button
+            onClick={() => loadSetup()}
+            className="btn btn-secondary text-xs"
+          >
+            Retry
+          </button>
+        </div>
       </main>
     );
   }
+
   if (!setup) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
-        <p className="text-slate-400">Loading keeper console…</p>
+      <main className="min-h-screen text-slate-100 flex items-center justify-center p-6">
+        <div className="retro-panel p-5 border-2 border-slate-500 bg-slate-900 max-w-xs text-center space-y-2">
+          <div className="text-2xl animate-spin">★</div>
+          <div className="font-bold text-xs uppercase text-yellow-300">
+            LOADING KEEPER CONSOLE…
+          </div>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 max-w-3xl mx-auto p-4 space-y-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black">Keeper Admin</h1>
-          <p className="text-xs text-slate-400">
-            {setup.league.name} · {setup.league.season}
-            {setup.preview.saved_at ? " · last saved" : ""}
-          </p>
+    <main className="min-h-screen text-slate-100 max-w-4xl mx-auto p-3 sm:p-6 space-y-4 font-sans">
+      {/* Top Header Window */}
+      <header className="retro-panel p-0 shadow-[4px_4px_0px_#000000]">
+        <div className="retro-titlebar-gold">
+          <div className="flex items-center gap-2">
+            <span>★</span>
+            <span className="font-black uppercase tracking-wide">
+              KEEPER ADMINISTRATION &amp; CALCULATION ENGINE
+            </span>
+          </div>
+          <a
+            href={`/draft/${token}/admin`}
+            className="btn btn-secondary text-[10px] py-0.5 px-2 font-mono"
+          >
+            ← Commissioner Console
+          </a>
         </div>
-        <a
-          href={`/draft/${token}/admin`}
-          className="text-xs text-slate-400 hover:text-emerald-400"
-        >
-          ← Commissioner console
-        </a>
+        <div className="p-4 bg-slate-950 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-black font-heading text-white">
+              Keeper Rules &amp; Roster Importer
+            </h1>
+            <p className="text-xs text-slate-400 font-mono mt-0.5">
+              {setup.league.name} • Season {setup.league.season}
+              {setup.preview.saved_at ? " • Calculation Saved" : ""}
+            </p>
+          </div>
+        </div>
       </header>
 
-      {error && <div className="rounded-lg bg-red-900/40 px-3 py-2 text-sm text-red-300">{error}</div>}
-      {notice && <div className="rounded-lg bg-emerald-900/40 px-3 py-2 text-sm text-emerald-300">{notice}</div>}
-
-      {busy && (
-        <div className="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-emerald-300" role="status">
-          <span
-            className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-emerald-400 border-t-transparent"
-            aria-hidden="true"
-          />
-          <span className="font-semibold">{busy}</span>
+      {error && (
+        <div className="retro-panel p-2.5 text-xs font-mono font-bold border-red-500 bg-red-950 text-red-200">
+          ⚠️ ERROR: {error}
+        </div>
+      )}
+      {notice && (
+        <div className="retro-panel p-2.5 text-xs font-mono font-bold border-emerald-500 bg-emerald-950 text-emerald-200">
+          ✓ NOTICE: {notice}
         </div>
       )}
 
-      {/* Step 1: historical drafts */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          1 · ClickyDraft history
-        </h2>
-        <p className="mb-3 text-xs text-slate-400">
-          Load both seasons so keeper costs and the two-year eligibility rule
-          can be calculated. For either season, upload the saved ClickyDraft
-          HTML page or select a completed draft already in this app.
-        </p>
-        <div className="space-y-3">
-          {(["previous", "prior"] as const).map((role) => {
-            const isPrevious = role === "previous";
-            const loadedYear = isPrevious
-              ? setup.draft.previous_year
-              : setup.draft.prior_year;
-            return (
-              <div
-                key={role}
-                className="rounded-xl border border-slate-800 bg-slate-950/30 p-3"
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-slate-200">
-                    {isPrevious ? "Previous season" : "Season before (2-year rule)"}
-                  </h3>
-                  <span className={loadedYear ? "text-xs text-emerald-300" : "text-xs text-amber-300"}>
-                    {loadedYear ? `${loadedYear} loaded` : "Required"}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    type="file"
-                    accept=".html,.htm,text/html"
-                    className="min-w-48 flex-1 text-xs text-slate-400"
-                    disabled={!!busy}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) uploadDraft(file, role);
-                      e.target.value = "";
-                    }}
-                  />
-                  <span className="text-xs text-slate-600">or</span>
-                  <select
-                    className="input min-w-48 flex-1"
-                    value={useDraftIds[role]}
-                    onChange={(e) =>
-                      setUseDraftIds((current) => ({
-                        ...current,
-                        [role]: Number(e.target.value),
-                      }))
-                    }
-                  >
-                    <option value={0}>select completed app draft</option>
-                    {setup.previous_drafts.map((draft) => (
-                      <option key={draft.id} value={draft.id}>
-                        {draft.name} · {draft.season} · {draft.picks} picks
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="btn-secondary"
-                    disabled={!useDraftIds[role] || !!busy}
-                    onClick={() => loadAppDraft(role)}
-                  >
-                    Load
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+      {busy && (
+        <div className="retro-panel p-2.5 text-xs font-mono font-bold border-yellow-400 bg-amber-950 text-yellow-300 flex items-center gap-2" role="status">
+          <span className="animate-spin text-sm">⏳</span>
+          <span>{busy}</span>
         </div>
-        <div className="mt-3 space-y-1 text-sm text-slate-400">
-          {Object.entries(setup.draft.draft_counts).map(([year, byTeam]) => (
-            <p key={year}>
-              <span className="text-slate-200 font-semibold">{year}</span> ·{" "}
-              {Object.entries(byTeam)
-                .map(([team, count]) => `${team} (${count})`)
-                .join(", ")}
-            </p>
-          ))}
-          {!setup.draft.has_draft && (
-            <p className="text-slate-600">
-              No historical drafts loaded yet.
-            </p>
-          )}
+      )}
+
+      {/* Step 1: Historical drafts */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>1 • CLICKYDRAFT / HISTORICAL DRAFT DATA</span>
+          <span className="text-[10px] font-mono text-cyan-300">
+            2-YEAR RULE ENGINE
+          </span>
+        </div>
+        <div className="p-4 bg-slate-950 space-y-3">
+          <p className="text-xs text-slate-400 font-mono">
+            Load both previous seasons so keeper costs and 2-consecutive-year
+            eligibility rules calculate accurately. Upload saved ClickyDraft HTML
+            or select a completed draft.
+          </p>
+          <div className="space-y-3">
+            {(["previous", "prior"] as const).map((role) => {
+              const isPrevious = role === "previous";
+              const loadedYear = isPrevious
+                ? setup.draft.previous_year
+                : setup.draft.prior_year;
+              return (
+                <div
+                  key={role}
+                  className="border border-slate-700 bg-black/60 p-3 space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-yellow-300 uppercase font-mono">
+                      {isPrevious
+                        ? "★ Previous Season Draft"
+                        : "★ Season Before Draft (2-Year Rule)"}
+                    </h3>
+                    <span
+                      className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border ${
+                        loadedYear
+                          ? "bg-emerald-950 text-emerald-300 border-emerald-500"
+                          : "bg-amber-950 text-amber-300 border-amber-500"
+                      }`}
+                    >
+                      {loadedYear ? `${loadedYear} LOADED` : "REQUIRED"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="file"
+                      accept=".html,.htm,text/html"
+                      className="min-w-44 flex-1 text-xs text-slate-400 font-mono file:btn file:btn-secondary file:mr-2 file:text-xs"
+                      disabled={!!busy}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadDraft(file, role);
+                        e.target.value = "";
+                      }}
+                    />
+                    <span className="text-xs font-mono text-slate-500">or</span>
+                    <select
+                      className="input min-w-44 flex-1 text-xs"
+                      value={useDraftIds[role]}
+                      onChange={(e) =>
+                        setUseDraftIds((current) => ({
+                          ...current,
+                          [role]: Number(e.target.value),
+                        }))
+                      }
+                    >
+                      <option value={0}>Select Completed App Draft…</option>
+                      {setup.previous_drafts.map((draft) => (
+                        <option key={draft.id} value={draft.id}>
+                          {draft.name} · {draft.season} · {draft.picks} picks
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn btn-secondary text-xs"
+                      disabled={!useDraftIds[role] || !!busy}
+                      onClick={() => loadAppDraft(role)}
+                    >
+                      Load
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="pt-2 border-t border-slate-800 text-xs font-mono text-slate-400 space-y-1">
+            {Object.entries(setup.draft.draft_counts).map(([year, byTeam]) => (
+              <p key={year}>
+                <span className="text-yellow-300 font-bold">{year}:</span>{" "}
+                {Object.entries(byTeam)
+                  .map(([team, count]) => `${team} (${count})`)
+                  .join(", ")}
+              </p>
+            ))}
+            {!setup.draft.has_draft && (
+              <p className="text-slate-600">No historical drafts loaded yet.</p>
+            )}
+          </div>
         </div>
       </section>
 
-      {/* Step 2: roster data */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          2 · Yahoo rosters and transactions
-        </h2>
-        <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-4 mb-4">
-          <label className="block text-sm font-semibold text-slate-200 mb-1">
-            Upload the Yahoo Starting Rosters page
-          </label>
-          <p className="text-xs text-slate-400 mb-3">
-            In Yahoo, open Starting Rosters with the Team tab selected, choose
-            the desired week, and save the complete webpage as HTML. One file
-            contains every league team.
-          </p>
-          <input
-            type="file"
-            accept=".html,.htm,text/html"
-            className="text-xs text-slate-400"
-            disabled={!!busy}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) uploadRosterHtml(file);
-              e.target.value = "";
-            }}
-          />
+      {/* Step 2: Yahoo Rosters and Transactions */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>2 • YAHOO ROSTERS &amp; TRANSACTIONS</span>
+          <span className="text-[10px] font-mono text-cyan-300">
+            HTML / API INGESTION
+          </span>
         </div>
-        <div className="rounded-xl border border-slate-700 bg-slate-950/30 p-4 mb-4">
-          <div className="mb-1 flex items-center justify-between gap-2">
-            <label className="text-sm font-semibold text-slate-200">
-              Upload the Yahoo Transactions page
-            </label>
-            <span className={setup.transactions.loaded ? "text-xs text-emerald-300" : "text-xs text-amber-300"}>
-              {setup.transactions.loaded
-                ? `${setup.transactions.trade_count} traded players loaded`
-                : "Required"}
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 mb-3">
-            Save the league Transactions page as HTML. Trades are matched back
-            to the original drafting team; players without a draft pick receive
-            a round 11 cost.
-          </p>
-          <input
-            type="file"
-            accept=".html,.htm,text/html"
-            className="text-xs text-slate-400"
-            disabled={!!busy}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) uploadTransactionsHtml(file);
-              e.target.value = "";
-            }}
-          />
-        </div>
-        <details className="border-t border-slate-800 pt-3">
-          <summary className="cursor-pointer text-xs font-bold uppercase tracking-widest text-slate-500">
-            Legacy Yahoo API and roster CSV options
-          </summary>
-          <div className="mt-3">
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <input
-            className="input"
-            placeholder="Yahoo league ID (e.g. 735068)"
-            value={yLeague}
-            onChange={(e) => setYLeague(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="Game ID (449)"
-            value={yGameId}
-            onChange={(e) => setYGameId(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="Season ID (2025)"
-            value={ySeason}
-            onChange={(e) => setYSeason(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="Week (blank = current)"
-            value={yWeek}
-            onChange={(e) => setYWeek(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="Consumer key"
-            value={yKey}
-            onChange={(e) => setYKey(e.target.value)}
-          />
-          <input
-            className="input"
-            type="password"
-            placeholder="Consumer secret"
-            value={ySecret}
-            onChange={(e) => setYSecret(e.target.value)}
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button className="btn-secondary" onClick={saveYahooConfig} disabled={!!busy}>
-            Save Yahoo config
-          </button>
-          {setup.yahoo.configured && (
-            <span className="text-xs text-slate-500">
-              League {setup.yahoo.league_id_external || "—"} · key{" "}
-              {setup.yahoo.consumer_key || "—"} ·{" "}
-              {setup.yahoo.has_token ? "authorized" : "not authorized"}
-            </span>
-          )}
-        </div>
-        {setup.yahoo.configured && (
-          <div className="mt-3 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <button className="btn-secondary" onClick={authorizeYahoo} disabled={!!busy}>
-                {setup.yahoo.has_token ? "Re-authorize" : "Authorize with Yahoo"}
-              </button>
-              {authUrl && (
-                <span className="text-xs text-slate-400 break-all">
-                  Open{" "}
-                  <a href={authUrl} target="_blank" rel="noreferrer" className="text-emerald-400 underline">
-                    this link
-                  </a>
-                  , authorize, then paste the code.
-                </span>
-              )}
+        <div className="p-4 bg-slate-950 space-y-3">
+          {/* Yahoo Rosters HTML */}
+          <div className="border border-slate-700 bg-black/60 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-yellow-300 uppercase font-mono">
+                ★ Upload Yahoo Starting Rosters HTML
+              </label>
+              <span
+                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border ${
+                  setup.rosters.teams.length > 0
+                    ? "bg-emerald-950 text-emerald-300 border-emerald-500"
+                    : "bg-amber-950 text-amber-300 border-amber-500"
+                }`}
+              >
+                {setup.rosters.teams.length > 0
+                  ? `${setup.rosters.teams.length} TEAMS LOADED`
+                  : "REQUIRED"}
+              </span>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                className="input flex-1"
-                placeholder="Paste authorization code here"
-                value={yCode}
-                onChange={(e) => setYCode(e.target.value)}
-              />
-              <button className="btn-primary" onClick={completeYahooCode} disabled={!yCode || !!busy}>
-                Connect
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button className="btn-secondary" onClick={fetchTeamNames} disabled={!setup.yahoo.has_token || !!busy}>
-                Test connection &amp; refresh teams
-              </button>
-              <button className="btn-primary" onClick={fetchRosters} disabled={!setup.yahoo.has_token || !!busy}>
-                Fetch rosters from Yahoo
-              </button>
-            </div>
-          </div>
-        )}
-          <div className="mt-3 flex items-center gap-2">
+            <p className="text-xs text-slate-400 font-mono">
+              In Yahoo Fantasy, open Starting Rosters (Team tab selected), choose
+              the desired week, and save the webpage as complete HTML.
+            </p>
             <input
               type="file"
-              accept=".csv"
-              multiple
-              className="text-xs text-slate-500"
+              accept=".html,.htm,text/html"
+              className="text-xs text-slate-400 font-mono file:btn file:btn-secondary file:mr-2 file:text-xs"
+              disabled={!!busy}
               onChange={(e) => {
-                if (e.target.files?.length) uploadRosters(e.target.files);
+                const file = e.target.files?.[0];
+                if (file) uploadRosterHtml(file);
                 e.target.value = "";
               }}
             />
-            <span className="text-xs text-slate-600">upload legacy roster CSVs</span>
           </div>
-          </div>
-        </details>
-        <p className="mt-3 text-xs text-slate-400">
-          {setup.rosters.teams.length > 0
-            ? `${setup.rosters.teams.length} Yahoo teams found${setup.rosters.source ? ` from ${setup.rosters.source}` : ""}${setup.rosters.week ? ` (week ${setup.rosters.week})` : ""}: ${setup.rosters.teams.join(", ")}${setup.rosters.player_count > 0 ? ` (${setup.rosters.player_count} rostered players loaded)` : " (rosters not loaded yet)"}`
-            : "No Yahoo team or roster data loaded yet."}
-        </p>
-      </section>
 
-      {/* Step 3: team name mapping */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          3 · Team name mapping
-        </h2>
-        <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs text-slate-500 mb-1 px-1">
-          <span>App team</span>
-          <span>ClickyDraft team</span>
-          <span>Yahoo team</span>
-          <span />
-        </div>
-        <div className="space-y-2">
-          {setup.teams.map((team) => {
-            const m = mappings[team.id] ?? { draft_name: "", yahoo_name: "" };
-            return (
-              <div key={team.id} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
-                <div className="flex items-center text-sm font-semibold truncate">
-                  {team.name}
-                </div>
-                <select
+          {/* Yahoo Transactions HTML */}
+          <div className="border border-slate-700 bg-black/60 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-yellow-300 uppercase font-mono">
+                ★ Upload Yahoo Transactions HTML
+              </label>
+              <span
+                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 border ${
+                  setup.transactions.loaded
+                    ? "bg-emerald-950 text-emerald-300 border-emerald-500"
+                    : "bg-amber-950 text-amber-300 border-amber-500"
+                }`}
+              >
+                {setup.transactions.loaded
+                  ? `${setup.transactions.trade_count} TRADED PLAYERS`
+                  : "REQUIRED"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 font-mono">
+              Save the league Transactions page as HTML to match traded players
+              back to original drafting teams.
+            </p>
+            <input
+              type="file"
+              accept=".html,.htm,text/html"
+              className="text-xs text-slate-400 font-mono file:btn file:btn-secondary file:mr-2 file:text-xs"
+              disabled={!!busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadTransactionsHtml(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          {/* Legacy Yahoo API & CSV Details */}
+          <details className="border-t border-slate-800 pt-2 text-xs font-mono">
+            <summary className="cursor-pointer text-yellow-300 font-bold uppercase">
+              [+] Legacy Yahoo OAuth API &amp; Roster CSV Options
+            </summary>
+            <div className="mt-3 space-y-3 p-3 bg-slate-900 border border-slate-800">
+              <div className="grid grid-cols-2 gap-2">
+                <input
                   className="input"
-                  value={m.draft_name}
-                  onChange={(e) =>
-                    setMappings((prev) => ({
-                      ...prev,
-                      [team.id]: { ...prev[team.id], draft_name: e.target.value },
-                    }))
-                  }
-                >
-                  <option value="">— none —</option>
-                  {setup.draft.draft_teams.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <select
+                  placeholder="Yahoo League ID (e.g. 735068)"
+                  value={yLeague}
+                  onChange={(e) => setYLeague(e.target.value)}
+                />
+                <input
                   className="input"
-                  value={m.yahoo_name}
-                  onChange={(e) =>
-                    setMappings((prev) => ({
-                      ...prev,
-                      [team.id]: { ...prev[team.id], yahoo_name: e.target.value },
-                    }))
-                  }
-                >
-                  <option value="">— none —</option>
-                  {setup.rosters.teams.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <span className="w-6" />
+                  placeholder="Game ID (449)"
+                  value={yGameId}
+                  onChange={(e) => setYGameId(e.target.value)}
+                />
+                <input
+                  className="input"
+                  placeholder="Season ID (2025)"
+                  value={ySeason}
+                  onChange={(e) => setYSeason(e.target.value)}
+                />
+                <input
+                  className="input"
+                  placeholder="Week (blank = current)"
+                  value={yWeek}
+                  onChange={(e) => setYWeek(e.target.value)}
+                />
+                <input
+                  className="input"
+                  placeholder="Consumer Key"
+                  value={yKey}
+                  onChange={(e) => setYKey(e.target.value)}
+                />
+                <input
+                  className="input"
+                  type="password"
+                  placeholder="Consumer Secret"
+                  value={ySecret}
+                  onChange={(e) => setYSecret(e.target.value)}
+                />
               </div>
-            );
-          })}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  className="btn btn-secondary text-xs"
+                  onClick={saveYahooConfig}
+                  disabled={!!busy}
+                >
+                  Save Yahoo Config
+                </button>
+                {setup.yahoo.configured && (
+                  <span className="text-[11px] text-slate-400">
+                    League {setup.yahoo.league_id_external || "—"} ·{" "}
+                    {setup.yahoo.has_token ? "Authorized" : "Not Authorized"}
+                  </span>
+                )}
+              </div>
+
+              {setup.yahoo.configured && (
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      className="btn btn-secondary text-xs"
+                      onClick={authorizeYahoo}
+                      disabled={!!busy}
+                    >
+                      {setup.yahoo.has_token ? "Re-authorize" : "Authorize with Yahoo"}
+                    </button>
+                    {authUrl && (
+                      <span className="text-xs text-slate-400">
+                        Open{" "}
+                        <a
+                          href={authUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-emerald-400 underline"
+                        >
+                          this link
+                        </a>
+                        , authorize, then paste code.
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="input flex-1"
+                      placeholder="Paste authorization code here"
+                      value={yCode}
+                      onChange={(e) => setYCode(e.target.value)}
+                    />
+                    <button
+                      className="btn btn-primary text-xs"
+                      onClick={completeYahooCode}
+                      disabled={!yCode || !!busy}
+                    >
+                      Connect
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      className="btn btn-secondary text-xs"
+                      onClick={fetchTeamNames}
+                      disabled={!setup.yahoo.has_token || !!busy}
+                    >
+                      Test Connection &amp; Refresh Teams
+                    </button>
+                    <button
+                      className="btn btn-primary text-xs"
+                      onClick={fetchRosters}
+                      disabled={!setup.yahoo.has_token || !!busy}
+                    >
+                      Fetch Rosters From Yahoo
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-slate-800">
+                <input
+                  type="file"
+                  accept=".csv"
+                  multiple
+                  className="text-xs text-slate-400 file:btn file:btn-secondary file:mr-2 file:text-xs"
+                  onChange={(e) => {
+                    if (e.target.files?.length) uploadRosters(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+                <span className="text-[10px] text-slate-500 ml-2">
+                  Legacy per-team CSV roster files
+                </span>
+              </div>
+            </div>
+          </details>
+
+          <p className="text-xs font-mono text-slate-400">
+            {setup.rosters.teams.length > 0
+              ? `✓ ${setup.rosters.teams.length} Yahoo teams loaded (${setup.rosters.player_count} players): ${setup.rosters.teams.join(", ")}`
+              : "No Yahoo team data loaded yet."}
+          </p>
         </div>
-        <button className="btn-secondary mt-3" onClick={saveMappings} disabled={!!busy}>
-          Save mappings
-        </button>
       </section>
 
-      {/* Step 4: identify / review / save / export */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">
-            4 · Review by team ({previewTotal})
-          </h2>
+      {/* Step 3: Team Name Mapping */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>3 • TEAM NAME MAPPINGS</span>
+          <span className="text-[10px] font-mono text-yellow-300">
+            DRAFT TEAM ↔ YAHOO TEAM
+          </span>
+        </div>
+        <div className="p-4 bg-slate-950 space-y-3">
+          <div className="grid grid-cols-[1fr_1fr_1fr] gap-2 text-xs font-mono text-yellow-300 font-bold border-b border-slate-800 pb-1">
+            <span>APP DRAFT TEAM</span>
+            <span>CLICKYDRAFT NAME</span>
+            <span>YAHOO TEAM NAME</span>
+          </div>
+
+          <div className="space-y-2">
+            {setup.teams.map((team) => {
+              const m = mappings[team.id] ?? { draft_name: "", yahoo_name: "" };
+              return (
+                <div
+                  key={team.id}
+                  className="grid grid-cols-[1fr_1fr_1fr] gap-2 items-center"
+                >
+                  <div className="font-bold text-sm text-white truncate font-sans">
+                    {team.name}
+                  </div>
+                  <select
+                    className="input text-xs"
+                    value={m.draft_name}
+                    onChange={(e) =>
+                      setMappings((prev) => ({
+                        ...prev,
+                        [team.id]: { ...prev[team.id], draft_name: e.target.value },
+                      }))
+                    }
+                  >
+                    <option value="">— None —</option>
+                    {setup.draft.draft_teams.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="input text-xs"
+                    value={m.yahoo_name}
+                    onChange={(e) =>
+                      setMappings((prev) => ({
+                        ...prev,
+                        [team.id]: { ...prev[team.id], yahoo_name: e.target.value },
+                      }))
+                    }
+                  >
+                    <option value="">— None —</option>
+                    {setup.rosters.teams.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            className="btn btn-secondary text-xs mt-2"
+            onClick={saveMappings}
+            disabled={!!busy}
+          >
+            Save Team Mappings
+          </button>
+        </div>
+      </section>
+
+      {/* Step 4: Identify & Review */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar-gold">
+          <span>4 • KEEPER IDENTIFICATION &amp; TEAM REVIEW ({previewTotal})</span>
           {setup.preview.saved_at && (
-            <span className="text-xs text-slate-500">
-              {setup.preview.reviewed_team_ids.length}/{review.length} teams saved
+            <span className="text-[10px] font-mono text-yellow-200">
+              {setup.preview.reviewed_team_ids.length}/{review.length} TEAMS SAVED
             </span>
           )}
         </div>
-        <div className="flex flex-wrap gap-2 mb-2">
-          <button
-            className="btn-primary inline-flex items-center gap-2"
-            onClick={identify}
-            disabled={!!busy}
-          >
-            {busy === "Running keeper identification…" && (
-              <span
-                className="h-3 w-3 animate-spin rounded-full border-2 border-slate-950 border-t-transparent"
-                aria-hidden="true"
-              />
-            )}
-            {busy === "Running keeper identification…"
-              ? "Identifying…"
-              : "Identify keepable players"}
-          </button>
-          <button className="btn-secondary" onClick={exportCsv} disabled={!!busy}>
-            Export per-team CSVs
-          </button>
-        </div>
-        {lastRun && (
-          <p className="mb-3 text-xs text-slate-400">
-            Last run: <span className="text-emerald-300 font-semibold">{lastRun}</span>
-          </p>
-        )}
-        <p className="mb-3 text-xs text-slate-600">
-          Run identification only when source data changes. Saved team edits,
-          including adjusted rounds, are restored when you return before the draft.
-        </p>
-        {review.length > 0 && (
-          <div className="mb-4 rounded-xl border border-slate-800 bg-slate-950/30 p-3">
-            <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-slate-500">
-              Team to review
-            </label>
-            <select
-              className="input w-full"
-              value={selectedTeamId ?? ""}
-              onChange={(event) => setSelectedTeamId(Number(event.target.value))}
+
+        <div className="p-4 bg-slate-950 space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="btn btn-gold text-xs inline-flex items-center gap-1.5"
+              onClick={identify}
+              disabled={!!busy}
             >
-              {review.map((team) => {
-                const dirty = dirtyTeamIds.has(team.team_id);
-                const saved = reviewedTeamIds.has(team.team_id);
-                const status = dirty ? "unsaved changes" : saved ? "saved" : "not saved";
-                return (
-                  <option key={team.team_id} value={team.team_id}>
-                    {team.team_name} ({team.candidates.length}) - {status}
-                  </option>
-                );
-              })}
-            </select>
+              <span>⚡</span>
+              <span>
+                {busy === "Running keeper identification…"
+                  ? "Calculating…"
+                  : "Run Keeper Calculation Engine"}
+              </span>
+            </button>
+            <button
+              className="btn btn-secondary text-xs"
+              onClick={exportCsv}
+              disabled={!!busy}
+            >
+              Export Per-Team CSVs
+            </button>
           </div>
-        )}
-        {selectedWarnings.length > 0 && (
-          <ul className="mb-4 space-y-0.5 text-xs text-amber-300/90 bg-amber-900/20 rounded-lg p-2">
-            {selectedWarnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        )}
-        {review.length === 0 ? (
-          <p className="text-sm text-slate-500">
-            Run the identify step to compute costs from the drafts and
-            rosters.
-          </p>
-        ) : (
-          selectedTeam && (
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-bold text-slate-200">
-                    {selectedTeam.team_name} ({selectedTeam.candidates.length})
+
+          {lastRun && (
+            <div className="p-2 bg-emerald-950 border border-emerald-500 text-xs text-emerald-200 font-mono">
+              ✓ Calculation Result: {lastRun}
+            </div>
+          )}
+
+          {review.length > 0 && (
+            <div className="border border-slate-700 bg-black/60 p-3 space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-yellow-300 font-mono">
+                Select Team to Review &amp; Adjust:
+              </label>
+              <select
+                className="input w-full text-xs font-bold"
+                value={selectedTeamId ?? ""}
+                onChange={(event) =>
+                  setSelectedTeamId(Number(event.target.value))
+                }
+              >
+                {review.map((team) => {
+                  const dirty = dirtyTeamIds.has(team.team_id);
+                  const saved = reviewedTeamIds.has(team.team_id);
+                  const status = dirty
+                    ? "[UNSAVED CHANGES]"
+                    : saved
+                      ? "[SAVED]"
+                      : "[NOT SAVED]";
+                  return (
+                    <option key={team.team_id} value={team.team_id}>
+                      {team.team_name} ({team.candidates.length} candidates) — {status}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+
+          {selectedWarnings.length > 0 && (
+            <div className="space-y-1 p-2 bg-amber-950 border border-amber-500 text-xs text-amber-200 font-mono">
+              {selectedWarnings.map((w, i) => (
+                <div key={i}>⚠️ {w}</div>
+              ))}
+            </div>
+          )}
+
+          {review.length === 0 ? (
+            <p className="text-xs text-slate-500 font-mono py-4 text-center">
+              Load historical drafts &amp; rosters, map team names, then click
+              &quot;Run Keeper Calculation Engine&quot;.
+            </p>
+          ) : (
+            selectedTeam && (
+              <div className="space-y-3 pt-2">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <h3 className="font-bold text-sm text-yellow-300 font-heading">
+                    {selectedTeam.team_name} ({selectedTeam.candidates.length} Candidates)
                   </h3>
-                  <span className="text-xs text-slate-500">
-                    {dirtyTeamIds.has(selectedTeam.team_id)
-                      ? "Unsaved changes"
-                      : reviewedTeamIds.has(selectedTeam.team_id)
-                        ? "Saved"
-                        : "Not saved"}
+                  <span className="text-xs font-mono font-bold">
+                    {dirtyTeamIds.has(selectedTeam.team_id) ? (
+                      <span className="text-amber-400">[UNSAVED EDITS]</span>
+                    ) : reviewedTeamIds.has(selectedTeam.team_id) ? (
+                      <span className="text-emerald-400">[SAVED]</span>
+                    ) : (
+                      <span className="text-slate-500">[NOT SAVED]</span>
+                    )}
                   </span>
                 </div>
+
                 <div className="space-y-1.5">
                   {selectedTeam.candidates.map((c, ci) => (
                     <div
                       key={`${c.player_name}-${ci}`}
-                      className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm"
+                      className="flex items-center justify-between gap-2 border border-slate-800 bg-black/60 p-2 text-xs font-mono"
                     >
-                      <span className="flex-1 min-w-0">
-                        <span className="font-semibold truncate">{c.player_name}</span>{" "}
-                        <span className="text-xs text-slate-500">
-                          {c.position} · {c.nfl_team}
-                          {c.years_kept === 1 ? " · last year" : ""}
-                        </span>
-                      </span>
-                      <input
-                        className="input w-20"
-                        type="number"
-                        min={1}
-                        value={c.cost_round}
-                        onChange={(e) =>
-                          updateCandidate(selectedTeamIndex, ci, {
-                            cost_round: Number(e.target.value),
-                          })
-                        }
-                      />
-                      <button
-                        className="text-xs text-red-400 hover:underline"
-                        onClick={() => removeCandidate(selectedTeamIndex, ci)}
-                      >
-                        Remove
-                      </button>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-sans font-bold text-white truncate text-sm">
+                          {c.player_name}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400">
+                          <PositionBadge position={c.position} size="xs" />
+                          <span>
+                            {c.nfl_team ? `· ${c.nfl_team}` : ""}
+                            {c.years_kept === 1 ? " · LAST YEAR ELIGIBLE" : ""}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <label className="text-[10px] text-slate-400 uppercase">
+                          COST RND:
+                        </label>
+                        <input
+                          className="input w-16 text-center font-bold"
+                          type="number"
+                          min={1}
+                          value={c.cost_round}
+                          onChange={(e) =>
+                            updateCandidate(selectedTeamIndex, ci, {
+                              cost_round: Number(e.target.value),
+                            })
+                          }
+                        />
+                        <button
+                          className="btn btn-danger text-[10px] py-1 px-2"
+                          onClick={() => removeCandidate(selectedTeamIndex, ci)}
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </div>
                   ))}
+
                   {selectedTeam.candidates.length === 0 && (
-                    <p className="text-xs text-slate-600">No keepable players.</p>
+                    <p className="text-xs text-slate-500 font-mono py-2 text-center">
+                      No keepable players identified for this team.
+                    </p>
                   )}
                 </div>
+
                 <button
-                  className="btn-primary mt-3"
+                  className="btn btn-primary text-xs"
                   disabled={!editable || !!busy}
                   onClick={saveSelectedTeam}
                 >
-                  Save {selectedTeam.team_name}
+                  Save {selectedTeam.team_name} Keepers
                 </button>
               </div>
-          )
-        )}
+            )
+          )}
+        </div>
       </section>
     </main>
   );

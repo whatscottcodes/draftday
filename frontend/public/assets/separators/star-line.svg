@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="12" viewBox="0 0 300 12">
+  <defs>
+    <pattern id="star-pat" width="30" height="12" patternUnits="userSpaceOnUse">
+      <path d="M15,1 L17,4 L20,6 L17,8 L15,11 L13,8 L10,6 L13,4 Z" fill="#ffd700"/>
+      <circle cx="5" cy="6" r="1.5" fill="#00ffff"/>
+      <circle cx="25" cy="6" r="1.5" fill="#ff00ff"/>
+    </pattern>
+  </defs>
+  <rect width="300" height="12" fill="url(#star-pat)"/>
+</svg>

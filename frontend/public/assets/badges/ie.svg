@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="31" viewBox="0 0 88 31">
+  <rect x="0" y="0" width="88" height="31" fill="#003366"/>
+  <line x1="0" y1="0" x2="87" y2="0" stroke="#ffffff"/>
+  <line x1="0" y1="0" x2="0" y2="30" stroke="#ffffff"/>
+  <line x1="87" y1="0" x2="87" y2="30" stroke="#000000"/>
+  <line x1="0" y1="30" x2="87" y2="30" stroke="#000000"/>
+  <!-- e logo -->
+  <text x="6" y="24" font-family="'Georgia', serif" font-weight="bold" font-size="22" fill="#0099ff">e</text>
+  <text x="28" y="13" font-family="Arial, sans-serif" font-weight="bold" font-size="7" fill="#ffffff">MICROSOFT</text>
+  <text x="28" y="24" font-family="Arial, sans-serif" font-weight="bold" font-size="9" fill="#66ccff">Explorer 5.0</text>
+</svg>

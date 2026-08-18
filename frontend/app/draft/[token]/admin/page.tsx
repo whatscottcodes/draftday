@@ -100,15 +100,33 @@ export default function AdminPage({
 
   if (error && !config) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
-        <p className="text-red-400">{error}</p>
+      <main className="min-h-screen text-slate-100 flex items-center justify-center p-6">
+        <div className="retro-panel p-5 border-2 border-red-500 bg-red-950/80 max-w-sm text-center space-y-3">
+          <div className="text-2xl">⚠️</div>
+          <div className="font-bold text-sm text-red-200 uppercase">
+            Failed to Load Console
+          </div>
+          <p className="text-xs text-red-300 font-mono">{error}</p>
+          <button
+            onClick={() => loadConfig()}
+            className="btn btn-secondary text-xs"
+          >
+            Retry
+          </button>
+        </div>
       </main>
     );
   }
+
   if (!config) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
-        <p className="text-slate-400">Loading commissioner console…</p>
+      <main className="min-h-screen text-slate-100 flex items-center justify-center p-6">
+        <div className="retro-panel p-5 border-2 border-slate-500 bg-slate-900 max-w-xs text-center space-y-2">
+          <div className="text-2xl animate-spin">👑</div>
+          <div className="font-bold text-xs uppercase text-yellow-300">
+            LOADING COMMISSIONER CONSOLE…
+          </div>
+        </div>
       </main>
     );
   }
@@ -261,268 +279,307 @@ export default function AdminPage({
   }
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-6 max-w-6xl mx-auto space-y-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Link href="/" className="text-sm text-slate-400 hover:text-emerald-400">
-            ← All drafts
-          </Link>
-          <h1 className="text-3xl font-black mt-1">
-            {league.name}{" "}
-            <span className="text-slate-500 font-normal text-xl">
-              · {league.season}
+    <main className="min-h-screen text-slate-100 p-3 sm:p-6 max-w-6xl mx-auto space-y-6">
+      {/* Top Header Navigation Box */}
+      <header className="retro-panel p-0 shadow-[4px_4px_0px_#000000]">
+        <div className="retro-titlebar-gold">
+          <div className="flex items-center gap-2">
+            <span>👑</span>
+            <span className="font-black uppercase tracking-wide">
+              COMMISSIONER CONTROL PANEL • {league.name}
             </span>
-          </h1>
-          <p className="text-sm text-slate-400">
-            Commissioner console · {league.num_teams} teams · {league.num_rounds}{" "}
-            rounds · status{" "}
-            <span className="badge bg-emerald-500/20 text-emerald-300">
-              {league.status}
-            </span>
-            {!connected && " · reconnecting…"}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {league.status === "LIVE" && (
-            <button className="btn-danger" onClick={undo}>
-              Undo last pick
-            </button>
-          )}
-          {league.status === "COMPLETED" && (
-            <button className="btn-secondary" onClick={reopen}>
-              Reopen draft
-            </button>
-          )}
-          <button className="btn-secondary" onClick={loadConfig}>
-            Refresh
-          </button>
-          <a
-            href={`/draft/${token}/keepers`}
-            className="btn-secondary"
+          </div>
+          <span
+            className={`text-[10px] font-mono px-1.5 py-0.5 border ${
+              connected
+                ? "bg-emerald-950 text-emerald-300 border-emerald-400"
+                : "bg-red-950 text-red-300 border-red-400 animate-pulse"
+            }`}
           >
-            Keeper admin
-          </a>
-          {editable && (
-            <button
-              className="btn-primary"
-              onClick={start}
-              disabled={!validation.valid}
-              title={
-                validation.valid
-                  ? "Start the draft"
-                  : "Fix validation errors to start"
-              }
+            {connected ? "LIVE SYNC" : "OFFLINE"}
+          </span>
+        </div>
+
+        <div className="p-4 flex flex-wrap items-center justify-between gap-4 bg-slate-950">
+          <div>
+            <Link
+              href="/"
+              className="text-xs text-yellow-300 hover:underline font-mono"
             >
-              Validate & start
+              ← Back to All Drafts
+            </Link>
+            <h1 className="text-2xl sm:text-3xl font-black font-heading tracking-tight text-white mt-1">
+              {league.name}{" "}
+              <span className="text-yellow-400 font-mono text-lg">
+                ({league.season})
+              </span>
+            </h1>
+            <p className="text-xs text-slate-400 font-mono mt-0.5">
+              {league.num_teams} Teams • {league.num_rounds} Rounds • Status:{" "}
+              <span className="badge bg-emerald-950 text-emerald-300 border-emerald-500">
+                {league.status}
+              </span>
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {league.status === "LIVE" && (
+              <button className="btn btn-danger text-xs" onClick={undo}>
+                ⏮ Undo Last Pick
+              </button>
+            )}
+            {league.status === "COMPLETED" && (
+              <button className="btn btn-secondary text-xs" onClick={reopen}>
+                🔄 Reopen Draft
+              </button>
+            )}
+            <button className="btn btn-secondary text-xs" onClick={loadConfig}>
+              ⟳ Refresh
             </button>
-          )}
-          <button className="btn-danger" onClick={removeDraft}>
-            Delete draft
-          </button>
+            <a
+              href={`/draft/${token}/keepers`}
+              className="btn btn-gold text-xs inline-flex items-center gap-1"
+            >
+              ★ Keeper Admin
+            </a>
+            <a
+              href={`/draft/${token}/display`}
+              className="btn btn-secondary text-xs inline-flex items-center gap-1"
+            >
+              📺 TV Board
+            </a>
+            {editable && (
+              <button
+                className="btn btn-primary text-xs"
+                onClick={start}
+                disabled={!validation.valid}
+                title={
+                  validation.valid
+                    ? "Start the draft"
+                    : "Fix validation errors to start"
+                }
+              >
+                ▶ Validate &amp; Start Draft
+              </button>
+            )}
+            <button className="btn btn-danger text-xs" onClick={removeDraft}>
+              ✕ Delete Draft
+            </button>
+          </div>
         </div>
       </header>
 
       {notice && (
         <div
-          className={`rounded-lg px-4 py-2 text-sm ${
+          className={`retro-panel p-2.5 text-xs font-mono font-bold ${
             notice.ok
-              ? "bg-emerald-900/40 text-emerald-300"
-              : "bg-red-900/40 text-red-300"
+              ? "border-emerald-500 bg-emerald-950 text-emerald-200"
+              : "border-red-500 bg-red-950 text-red-200"
           }`}
         >
+          {notice.ok ? "✓ SUCCESS: " : "⚠️ NOTICE: "}
           {notice.text}
         </div>
       )}
       {error && (
-        <div className="rounded-lg px-4 py-2 text-sm bg-red-900/40 text-red-300">
-          {error}
+        <div className="retro-panel p-2.5 text-xs font-mono font-bold border-red-500 bg-red-950 text-red-200">
+          ⚠️ ERROR: {error}
         </div>
       )}
 
-      {/* Validation */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Validation{" "}
+      {/* Validation Panel */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>⚙️ DRAFT VALIDATION STATUS</span>
           <span
-            className={
-              validation.valid
-                ? "text-emerald-400"
-                : "text-red-400"
-            }
+            className={`font-mono text-[10px] font-bold ${
+              validation.valid ? "text-emerald-300" : "text-red-300"
+            }`}
           >
-            {validation.valid ? "— ready" : "— errors"}
+            [{validation.valid ? "READY FOR DRAFT" : "ACTION REQUIRED"}]
           </span>
-        </h2>
-        {validation.errors.length === 0 && validation.warnings.length === 0 && (
-          <p className="text-sm text-slate-500">No issues.</p>
-        )}
-        <ul className="space-y-1 text-sm">
-          {validation.errors.map((v, i) => (
-            <li key={i} className="text-red-300">
-              <span className="font-bold">Error:</span> {v.message}
-            </li>
-          ))}
-          {validation.warnings.map((v, i) => (
-            <li key={i} className="text-amber-300">
-              <span className="font-bold">Warning:</span> {v.message}
-            </li>
-          ))}
-        </ul>
-        {editable && (
-          <button
-            className="btn-secondary mt-3"
-            onClick={() => action("POST", `/api/draft/${token}/admin/validate`)}
-          >
-            Re-run validation
-          </button>
-        )}
-      </section>
-
-      {/* Roster slots */}
-      {editable && (
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-            Roster slots
-          </h2>
-          <p className="text-xs text-slate-500 mb-2">
-            One slot per line. Use Flex for a RB/WR/TE slot. Players that do not
-            fit a slot go to the bench.
-          </p>
-          <textarea
-            className="input h-32 font-mono text-xs"
-            value={rosterSlotsText}
-            onChange={(e) => setRosterSlotsText(e.target.value)}
-          />
-          <button
-            className="btn-secondary mt-2"
-            disabled={!rosterSlotsText.trim()}
-            onClick={saveRosterSlots}
-          >
-            Save roster slots
-          </button>
-        </section>
-      )}
-
-      {/* Commissioner override pick */}
-      {league.status === "LIVE" && state && (
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-            Commissioner override
-          </h2>
-          <OverridePick
-            state={state}
-            players={players}
-            keepers={keepers}
-            onPick={(slotId, playerId) =>
-              makePickForCurrent(slotId, playerId)
-            }
-          />
-        </section>
-      )}
-
-      {/* Live board preview */}
-      {state && (
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-            Draft history
-          </h2>
-          {state.recent_picks.length === 0 && (
-            <p className="text-sm text-slate-500">No picks yet.</p>
+        </div>
+        <div className="p-4 space-y-2 bg-slate-950">
+          {validation.errors.length === 0 && validation.warnings.length === 0 && (
+            <p className="text-xs text-emerald-400 font-mono">
+              ✓ All validation checks passed. League is ready to begin.
+            </p>
           )}
-          <ul className="space-y-1 text-sm">
-            {state.recent_picks.map((p) => (
-              <li key={p.id} className="text-slate-400">
-                <span className="text-slate-600">#{p.pick_number}</span>{" "}
-                <span className="text-slate-100">{p.player_name}</span>{" "}
-                <PositionBadge position={p.position} size="xs" />{" "}
-                <span className="text-slate-500">
-                  — {p.team_name}
-                  {p.pick_type !== "live" && (
-                    <span className="badge bg-amber-500/20 text-amber-300 ml-1">
-                      {p.pick_type}
-                    </span>
-                  )}
-                </span>
+          <ul className="space-y-1 text-xs font-mono">
+            {validation.errors.map((v, i) => (
+              <li key={i} className="text-red-300 bg-red-950/60 p-1.5 border border-red-800">
+                <span className="font-bold text-red-400">ERROR:</span> {v.message}
+              </li>
+            ))}
+            {validation.warnings.map((v, i) => (
+              <li key={i} className="text-amber-300 bg-amber-950/60 p-1.5 border border-amber-800">
+                <span className="font-bold text-amber-400">WARNING:</span> {v.message}
               </li>
             ))}
           </ul>
+          {editable && (
+            <button
+              className="btn btn-secondary text-xs mt-2"
+              onClick={() => action("POST", `/api/draft/${token}/admin/validate`)}
+            >
+              Re-run Validation Checks
+            </button>
+          )}
+        </div>
+      </section>
+
+      {/* Commissioner Override Pick (Live Draft) */}
+      {league.status === "LIVE" && state && (
+        <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000] border-amber-500">
+          <div className="retro-titlebar-gold">
+            <span>⚡ COMMISSIONER LIVE OVERRIDE PICK</span>
+            <span className="text-[10px] font-mono text-yellow-300">
+              MANUAL INTERVENTION
+            </span>
+          </div>
+          <div className="p-4 bg-slate-950">
+            <OverridePick
+              state={state}
+              players={players}
+              keepers={keepers}
+              onPick={(slotId, playerId) =>
+                makePickForCurrent(slotId, playerId)
+              }
+            />
+          </div>
         </section>
       )}
 
-      {/* Team access links */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Team links
-        </h2>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {teams.map((t) => (
-            <a
-              key={t.id}
-              href={`/draft/${token}/team/${t.access_token}`}
-              className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm hover:border-emerald-500"
-            >
-              <span className="text-slate-500">{t.draft_position}.</span>{" "}
-              <span className="font-semibold">{t.name}</span>
-              {t.manager_name && (
-                <span className="text-slate-500"> — {t.manager_name}</span>
-              )}
-            </a>
-          ))}
+      {/* Draft History */}
+      {state && (
+        <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+          <div className="retro-titlebar">
+            <span>📜 RECENT DRAFT PICKS LOG</span>
+            <span className="text-[10px] font-mono text-slate-300">
+              AUDIT TRAIL
+            </span>
+          </div>
+          <div className="p-4 bg-slate-950">
+            {state.recent_picks.length === 0 && (
+              <p className="text-xs text-slate-500 font-mono">No picks recorded yet.</p>
+            )}
+            <ul className="space-y-1 text-xs font-mono">
+              {state.recent_picks.map((p) => (
+                <li key={p.id} className="flex items-center gap-2 border-b border-slate-900 pb-1">
+                  <span className="text-yellow-400 font-bold w-8">
+                    #{p.pick_number}
+                  </span>
+                  <span className="font-sans font-bold text-white">
+                    {p.player_name}
+                  </span>
+                  <PositionBadge position={p.position} size="xs" />
+                  <span className="text-slate-400">— {p.team_name}</span>
+                  {p.pick_type !== "live" && (
+                    <span className="badge bg-amber-950 text-amber-300 border-amber-500 text-[9px]">
+                      {p.pick_type}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* Team Access Links */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>🔗 INDIVIDUAL TEAM ACCESS LINKS ({teams.length})</span>
+          <span className="text-[10px] font-mono text-cyan-300">
+            SHARE WITH MANAGERS
+          </span>
         </div>
-        <p className="text-xs text-slate-600 mt-3">
-          TV view:{" "}
-          <a
-            href={`/draft/${token}/display`}
-            className="text-emerald-400 underline"
-          >
-            /draft/{token}/display
-          </a>{" "}
-          · Rosters:{" "}
-          <a
-            href={`/draft/${token}/rosters`}
-            className="text-emerald-400 underline"
-          >
-            /draft/{token}/rosters
-          </a>
-        </p>
+        <div className="p-4 bg-slate-950 space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+            {teams.map((t) => (
+              <a
+                key={t.id}
+                href={`/draft/${token}/team/${t.access_token}`}
+                className="border border-slate-700 bg-black/60 p-2.5 text-xs hover:border-yellow-400 transition-none block"
+              >
+                <div className="text-yellow-400 font-mono font-bold text-[10px]">
+                  PICK #{t.draft_position}
+                </div>
+                <div className="font-bold text-white truncate text-sm">
+                  {t.name}
+                </div>
+                {t.manager_name && (
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    Manager: {t.manager_name}
+                  </div>
+                )}
+              </a>
+            ))}
+          </div>
+        </div>
       </section>
 
-      {/* Draft grid editor */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Draft slots
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
+      {/* Roster Slots Configuration */}
+      {editable && (
+        <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+          <div className="retro-titlebar">
+            <span>📋 ROSTER SLOTS CONFIGURATION</span>
+            <span className="text-[10px] font-mono text-slate-300">
+              PRE-DRAFT SETTING
+            </span>
+          </div>
+          <div className="p-4 bg-slate-950 space-y-2">
+            <p className="text-xs text-slate-400 font-mono">
+              One slot per line. Use Flex for RB/WR/TE. Players that do not fit
+              starting slots automatically route to Bench.
+            </p>
+            <textarea
+              className="input h-28 font-mono text-xs"
+              value={rosterSlotsText}
+              onChange={(e) => setRosterSlotsText(e.target.value)}
+            />
+            <button
+              className="btn btn-secondary text-xs"
+              disabled={!rosterSlotsText.trim()}
+              onClick={saveRosterSlots}
+            >
+              Save Roster Slots
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Draft Grid / Slots Editor */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>📊 DRAFT SLOTS &amp; TRADED PICKS ({slots.length})</span>
+          <span className="text-[10px] font-mono text-slate-300">
+            ORDER &amp; OWNERSHIP
+          </span>
+        </div>
+        <div className="p-4 bg-slate-950 overflow-x-auto">
+          <table className="retro-table text-xs font-mono">
             <thead>
               <tr>
-                <th className="px-2 py-1 text-left text-slate-500">Pick</th>
-                <th className="px-2 py-1 text-left text-slate-500">Round</th>
-                <th className="px-2 py-1 text-left text-slate-500">
-                  Original owner
-                </th>
-                <th className="px-2 py-1 text-left text-slate-500">
-                  Drafting team
-                </th>
-                <th className="px-2 py-1 text-left text-slate-500">Status</th>
+                <th>PICK</th>
+                <th>ROUND</th>
+                <th>ORIGINAL OWNER</th>
+                <th>DRAFTING TEAM</th>
+                <th>STATUS</th>
               </tr>
             </thead>
             <tbody>
               {slots.map((s) => {
-                const original = teams.find(
-                  (t) => t.id === s.original_team_id,
-                );
+                const original = teams.find((t) => t.id === s.original_team_id);
                 return (
-                  <tr key={s.slot_id} className="border-t border-slate-800">
-                    <td className="px-2 py-1 text-slate-400">{s.pick_number}</td>
-                    <td className="px-2 py-1 text-slate-400">{s.round}</td>
-                    <td className="px-2 py-1 text-slate-400">
-                      {original?.name ?? "?"}
-                    </td>
-                    <td className="px-2 py-1">
+                  <tr key={s.slot_id} className="hover:bg-slate-900">
+                    <td className="text-yellow-400 font-bold">#{s.pick_number}</td>
+                    <td>R{s.round}</td>
+                    <td className="text-slate-400">{original?.name ?? "?"}</td>
+                    <td>
                       {editable ? (
                         <select
-                          className="input w-40"
+                          className="input w-44 py-1 text-xs"
                           value={s.drafting_team_id}
                           onChange={(e) =>
                             updateSlot(s.slot_id, Number(e.target.value))
@@ -535,7 +592,7 @@ export default function AdminPage({
                           ))}
                         </select>
                       ) : (
-                        <span>
+                        <span className="font-bold text-white">
                           {
                             teams.find((t) => t.id === s.drafting_team_id)
                               ?.name
@@ -543,14 +600,14 @@ export default function AdminPage({
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-1">
+                    <td>
                       <span
                         className={`badge ${
                           s.status === "FILLED"
-                            ? "bg-slate-700 text-slate-200"
+                            ? "bg-slate-800 text-slate-200 border-slate-600"
                             : s.status === "KEEPER"
-                              ? "bg-amber-500/20 text-amber-300"
-                              : "bg-emerald-500/20 text-emerald-300"
+                              ? "bg-amber-950 text-amber-300 border-amber-500"
+                              : "bg-emerald-950 text-emerald-300 border-emerald-500"
                         }`}
                       >
                         {s.status}
@@ -564,215 +621,241 @@ export default function AdminPage({
         </div>
       </section>
 
-      {/* Keepers */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Keepers ({keepers.length})
-        </h2>
-        {editable && (
-          <div className="flex flex-wrap gap-2 mb-3">
-            <select
-              className="input w-36"
-              value={keeperTeam}
-              onChange={(e) => setKeeperTeam(e.target.value)}
-            >
-              <option value="">Team…</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="input w-44"
-              value={keeperPlayer}
-              onChange={(e) => setKeeperPlayer(e.target.value)}
-            >
-              <option value="">Player…</option>
-              {players
-                .filter((p) => !p.taken)
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} ({p.position})
+      {/* Keepers Management */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar-gold">
+          <span>★ CONFIRMED KEEPERS ({keepers.length})</span>
+          <span className="text-[10px] font-mono">LOCKS AT DRAFT</span>
+        </div>
+        <div className="p-4 bg-slate-950 space-y-3">
+          {editable && (
+            <div className="flex flex-wrap gap-2">
+              <select
+                className="input w-36 text-xs"
+                value={keeperTeam}
+                onChange={(e) => setKeeperTeam(e.target.value)}
+              >
+                <option value="">Select Team…</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
                   </option>
                 ))}
-            </select>
-            <input
-              className="input w-20"
-              type="number"
-              min={1}
-              max={league.num_rounds}
-              value={keeperRound}
-              onChange={(e) => setKeeperRound(Number(e.target.value))}
-            />
-            <button
-              className="btn-primary"
-              disabled={!keeperTeam || !keeperPlayer}
-              onClick={addKeeper}
-            >
-              Add keeper
-            </button>
-          </div>
-        )}
-        {keepers.length === 0 && (
-          <p className="text-sm text-slate-500">No keepers configured.</p>
-        )}
-        <ul className="space-y-1 text-sm">
-          {keepers.map((k) => (
-            <li
-              key={k.keeper_id}
-              className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5"
-            >
-              <span className="font-semibold">{k.player_name}</span>{" "}
-              <PositionBadge position={k.position} size="xs" />{" "}
-              <span className="text-slate-500">
-                → {k.team_name} · round {k.round}
+              </select>
+              <select
+                className="input w-48 text-xs"
+                value={keeperPlayer}
+                onChange={(e) => setKeeperPlayer(e.target.value)}
+              >
+                <option value="">Select Player…</option>
+                {players
+                  .filter((p) => !p.taken)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.position})
+                    </option>
+                  ))}
+              </select>
+              <input
+                className="input w-20 text-xs font-mono"
+                type="number"
+                min={1}
+                max={league.num_rounds}
+                value={keeperRound}
+                onChange={(e) => setKeeperRound(Number(e.target.value))}
+                placeholder="Rnd"
+              />
+              <button
+                className="btn btn-gold text-xs"
+                disabled={!keeperTeam || !keeperPlayer}
+                onClick={addKeeper}
+              >
+                + Add Keeper
+              </button>
+            </div>
+          )}
+
+          {keepers.length === 0 && (
+            <p className="text-xs text-slate-500 font-mono">
+              No manual keepers added yet.
+            </p>
+          )}
+
+          <ul className="space-y-1 text-xs font-mono">
+            {keepers.map((k) => (
+              <li
+                key={k.keeper_id}
+                className="flex items-center gap-2 border border-slate-800 bg-black/60 p-1.5 px-2"
+              >
+                <span className="font-sans font-bold text-white">
+                  {k.player_name}
+                </span>
+                <PositionBadge position={k.position} size="xs" />
+                <span className="text-slate-400">
+                  → {k.team_name} • Round {k.round}
+                </span>
+                {editable && (
+                  <button
+                    className="ml-auto text-red-400 hover:text-red-300 font-bold"
+                    onClick={() => removeKeeper(k.keeper_id)}
+                  >
+                    [Remove]
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* Keeper Candidates Import */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>📁 KEEPER CANDIDATES IMPORT ({config.keeper_candidates.length})</span>
+          <span className="text-[10px] font-mono text-cyan-300">CSV IMPORTER</span>
+        </div>
+        <div className="p-4 bg-slate-950 space-y-3">
+          {editable && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="file"
+                accept=".csv"
+                multiple
+                className="text-xs font-mono text-slate-400 file:btn file:btn-secondary file:mr-2 file:text-xs"
+                onChange={(e) => {
+                  const fs = e.target.files;
+                  if (fs?.length) importKeeperFiles(fs);
+                  e.target.value = "";
+                }}
+              />
+              <span className="text-[11px] text-slate-400 font-mono">
+                Roster CSVs (filename = team) or keepers_2024.csv
               </span>
+            </div>
+          )}
+
+          {config.keeper_candidates.length === 0 ? (
+            <p className="text-xs text-slate-500 font-mono">
+              No keeper candidates imported yet.
+            </p>
+          ) : (
+            <>
+              <ul className="space-y-1 text-xs font-mono max-h-48 overflow-y-auto">
+                {config.keeper_candidates.map((k) => (
+                  <li
+                    key={k.candidate_id}
+                    className="flex items-center gap-2 border border-slate-800 bg-black/60 p-1.5 px-2"
+                  >
+                    <span className="font-sans font-bold text-white">
+                      {k.player_name}
+                    </span>
+                    <PositionBadge position={k.position} size="xs" />
+                    <span className="text-slate-400">
+                      {k.nfl_team ? `· ${k.nfl_team} ` : ""}· Cost: R{k.cost_round} · {k.team_name}
+                    </span>
+                  </li>
+                ))}
+              </ul>
               {editable && (
                 <button
-                  className="ml-auto text-xs text-red-400 hover:underline"
-                  onClick={() => removeKeeper(k.keeper_id)}
+                  className="btn btn-danger text-xs"
+                  onClick={clearKeeperCandidates}
                 >
-                  Remove
+                  Clear All Candidates
                 </button>
               )}
-            </li>
-          ))}
-        </ul>
+            </>
+          )}
+        </div>
       </section>
 
-      {/* Keeper candidates */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Keeper candidates ({config.keeper_candidates.length})
-        </h2>
-        {editable && (
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <input
-              type="file"
-              accept=".csv"
-              multiple
-              className="text-sm"
-              onChange={(e) => {
-                const fs = e.target.files;
-                if (fs?.length) importKeeperFiles(fs);
-                e.target.value = "";
-              }}
-            />
-            <span className="text-xs text-slate-600">
-              Per-team roster CSVs (filename = team) or a keepers_2024.csv
-            </span>
-          </div>
-        )}
-        {config.keeper_candidates.length === 0 ? (
-          <p className="text-sm text-slate-500">No candidates imported.</p>
-        ) : (
-          <>
-            <ul className="space-y-1 text-sm">
-              {config.keeper_candidates.map((k) => (
-                <li
-                  key={k.candidate_id}
-                  className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5"
-                >
-                  <span className="font-semibold">{k.player_name}</span>{" "}
-                  <PositionBadge position={k.position} size="xs" />{" "}
-                  <span className="text-slate-500">
-                    {k.nfl_team ? `· ${k.nfl_team} ` : ""}· R{k.cost_round} ·{" "}
-                    {k.team_name}
-                    {k.years_kept === 1 ? " · last year" : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {editable && (
-              <button
-                className="btn-secondary mt-3"
-                onClick={clearKeeperCandidates}
-              >
-                Clear all candidates
-              </button>
-            )}
-          </>
-        )}
-      </section>
-
-      {/* Player import */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Players &amp; rankings ({players.length})
-        </h2>
-        <div className="flex flex-wrap items-center gap-2 mb-2">
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".csv"
-            className="text-sm"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) importCsvFile(f);
-            }}
-          />
-          <span className="text-xs text-slate-600">
-            FantasyPros export or CSV columns:
-            player_id,name,position,nfl_team,status,rank,adp
+      {/* Player Pool & Rankings Import */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>👥 PLAYER POOL &amp; RANKINGS ({players.length})</span>
+          <span className="text-[10px] font-mono text-yellow-300">
+            CSV DATA INGESTION
           </span>
         </div>
-        <textarea
-          className="input h-24 font-mono text-xs"
-          placeholder='Paste a CSV here — e.g. FantasyPros: RK,TIERS,"PLAYER NAME",TEAM,"POS","BYE WEEK",...'
-          value={csvText}
-          onChange={(e) => setCsvText(e.target.value)}
-        />
-        <button
-          className="btn-secondary mt-2"
-          disabled={!csvText.trim()}
-          onClick={importCsvText}
-        >
-          Import pasted CSV
-        </button>
-        {players.length > 0 && (
-          <details className="mt-3">
-            <summary className="text-sm text-slate-400 cursor-pointer">
-              Browse imported players
-            </summary>
-            <ul className="mt-2 space-y-0.5 text-xs text-slate-400 max-h-48 overflow-y-auto">
-              {players.map((p) => (
-                <li key={p.id} className="flex gap-2">
-                  <span className="w-10 text-right text-slate-600">
-                    {p.rank ?? "—"}
-                  </span>
-                  <span className={p.taken ? "line-through text-slate-600" : ""}>
-                    {p.name}
-                  </span>
-                  <PositionBadge position={p.position} size="xs" />
-                  <span className="text-slate-600">{p.nfl_team}</span>
-                  {p.bye_week && (
-                    <span className="text-slate-600">BYE {p.bye_week}</span>
-                  )}
-                  {p.tier && (
-                    <span className="text-amber-500/80">Tier {p.tier}</span>
-                  )}
-                  {p.taken && <span className="text-emerald-500">taken</span>}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
+        <div className="p-4 bg-slate-950 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv"
+              className="text-xs font-mono text-slate-400 file:btn file:btn-secondary file:mr-2 file:text-xs"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) importCsvFile(f);
+              }}
+            />
+            <span className="text-[11px] text-slate-400 font-mono">
+              FantasyPros CSV or standard rankings export
+            </span>
+          </div>
+
+          <textarea
+            className="input h-24 font-mono text-xs"
+            placeholder='Paste CSV content here: RK,TIERS,"PLAYER NAME",TEAM,"POS","BYE WEEK",...'
+            value={csvText}
+            onChange={(e) => setCsvText(e.target.value)}
+          />
+
+          <button
+            className="btn btn-secondary text-xs"
+            disabled={!csvText.trim()}
+            onClick={importCsvText}
+          >
+            Import Pasted CSV
+          </button>
+
+          {players.length > 0 && (
+            <details className="mt-2 text-xs font-mono">
+              <summary className="text-yellow-300 cursor-pointer font-bold">
+                [+] View All {players.length} Loaded Players
+              </summary>
+              <ul className="mt-2 space-y-0.5 text-xs text-slate-400 max-h-48 overflow-y-auto border border-slate-800 p-2 bg-black">
+                {players.map((p) => (
+                  <li key={p.id} className="flex gap-2">
+                    <span className="w-10 text-right text-yellow-400 font-bold">
+                      {p.rank ?? "—"}
+                    </span>
+                    <span className={p.taken ? "line-through text-slate-600 font-bold" : "font-bold text-white"}>
+                      {p.name}
+                    </span>
+                    <PositionBadge position={p.position} size="xs" />
+                    <span className="text-slate-400">{p.nfl_team}</span>
+                    {p.bye_week && (
+                      <span className="text-slate-500">BYE {p.bye_week}</span>
+                    )}
+                    {p.tier && (
+                      <span className="text-amber-400 font-bold">T{p.tier}</span>
+                    )}
+                    {p.taken && <span className="text-emerald-400 font-bold">[TAKEN]</span>}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       </section>
 
-      {/* Export */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          Export
-        </h2>
-        <button className="btn-secondary" onClick={exportResults}>
-          Export results (JSON)
-        </button>
-        {exported && (
-          <pre className="mt-3 text-xs text-slate-400 bg-slate-950 rounded-lg p-3 overflow-x-auto max-h-72">
-            {exported}
-          </pre>
-        )}
+      {/* JSON Export */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>💾 EXPORT LEAGUE DRAFT DATA</span>
+          <span className="text-[10px] font-mono text-slate-300">JSON BACKUP</span>
+        </div>
+        <div className="p-4 bg-slate-950 space-y-2">
+          <button className="btn btn-secondary text-xs" onClick={exportResults}>
+            Generate JSON Export
+          </button>
+          {exported && (
+            <pre className="text-[11px] font-mono text-cyan-300 bg-black border border-slate-800 p-3 overflow-x-auto max-h-60">
+              {exported}
+            </pre>
+          )}
+        </div>
       </section>
     </main>
   );
@@ -839,29 +922,30 @@ function OverridePick({
   }, [available, query]);
 
   return (
-    <div className="flex flex-wrap gap-2 items-end">
-      <label className="space-y-1 text-xs text-slate-400">
-        Slot
+    <div className="flex flex-wrap gap-2 items-end font-mono text-xs">
+      <label className="space-y-1 text-slate-300">
+        <span className="font-bold">TARGET SLOT:</span>
         <select
-          className="input w-44"
+          className="input w-48 font-mono text-xs"
           value={slotId}
           onChange={(e) => setSlotId(e.target.value)}
         >
-          <option value="">Current (pick {state.current_slot?.pick_number})</option>
+          <option value="">Current (Pick #{state.current_slot?.pick_number})</option>
           {state.board
             .filter((b) => b.status === "OPEN")
             .map((b) => (
               <option key={b.slot_id} value={b.slot_id}>
-                Pick {b.pick_number} · {teamName(state, b.drafting_team_id)}
+                Pick #{b.pick_number} · {teamName(state, b.drafting_team_id)}
               </option>
             ))}
         </select>
       </label>
-      <div className="relative flex-1 min-w-64 space-y-1 text-xs text-slate-400" ref={pickerRef}>
-        <span>Player</span>
+
+      <div className="relative flex-1 min-w-64 space-y-1 text-slate-300" ref={pickerRef}>
+        <span className="font-bold">SELECT PLAYER:</span>
         <input
-          className="input w-full"
-          placeholder="Search players…"
+          className="input w-full font-sans text-xs"
+          placeholder="Type to search player name…"
           value={query}
           onFocus={() => setOpen(true)}
           onChange={(e) => {
@@ -874,36 +958,37 @@ function OverridePick({
           }}
         />
         {open && (
-          <div className="absolute z-20 w-full max-h-56 overflow-y-auto rounded-lg border border-slate-800 bg-slate-900 shadow-xl">
+          <div className="absolute z-20 w-full max-h-56 overflow-y-auto border-2 border-slate-500 bg-slate-900 shadow-[4px_4px_0px_#000000]">
             {matches.map((p) => (
               <button
                 key={p.id}
                 type="button"
-                className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-slate-800"
+                className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-slate-800 border-b border-slate-800 text-xs font-sans"
                 onClick={() => {
                   setPlayerId(String(p.id));
                   setQuery("");
                   setOpen(false);
                 }}
               >
-                <span className="w-8 text-right text-slate-500 shrink-0">
+                <span className="w-8 text-right text-yellow-400 font-mono font-bold shrink-0">
                   {p.rank ?? "—"}
                 </span>
-                <span className="font-semibold truncate">{p.name}</span>
+                <span className="font-bold truncate text-white">{p.name}</span>
                 <PositionBadge position={p.position} size="xs" />
-                <span className="text-slate-500 shrink-0">{p.nfl_team}</span>
+                <span className="text-slate-400 text-[11px] shrink-0 font-mono">{p.nfl_team}</span>
               </button>
             ))}
             {matches.length === 0 && (
-              <p className="text-sm text-slate-500 px-3 py-2">
-                No players match.
+              <p className="text-xs text-slate-400 px-3 py-2 font-mono">
+                No matching players found.
               </p>
             )}
           </div>
         )}
       </div>
+
       <button
-        className="btn-primary"
+        className="btn btn-gold text-xs py-2 px-4 shadow-[2px_2px_0px_#000000]"
         disabled={!playerId}
         onClick={() =>
           onPick(
@@ -912,14 +997,15 @@ function OverridePick({
           )
         }
       >
-        Make pick
+        ⚡ Submit Override Pick
       </button>
+
       {target && (
-        <p className="text-xs text-slate-500">
+        <div className="w-full text-[11px] text-yellow-300 font-mono mt-1">
           {target.slot_id === state.current_slot?.slot_id
-            ? `Current slot: ${teamName(state, target.drafting_team_id)}`
-            : `Selected slot: pick ${target.pick_number} · ${teamName(state, target.drafting_team_id)}`}
-        </p>
+            ? `On the clock: ${teamName(state, target.drafting_team_id)} (Pick #${target.pick_number})`
+            : `Overriding slot: Pick #${target.pick_number} · ${teamName(state, target.drafting_team_id)}`}
+        </div>
       )}
     </div>
   );

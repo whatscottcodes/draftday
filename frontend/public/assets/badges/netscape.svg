@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="31" viewBox="0 0 88 31">
+  <rect x="0" y="0" width="88" height="31" fill="#000040" stroke="#8080ff" stroke-width="1"/>
+  <!-- 3D bevel -->
+  <line x1="0" y1="0" x2="87" y2="0" stroke="#ffffff"/>
+  <line x1="0" y1="0" x2="0" y2="30" stroke="#ffffff"/>
+  <line x1="87" y1="0" x2="87" y2="30" stroke="#000000"/>
+  <line x1="0" y1="30" x2="87" y2="30" stroke="#000000"/>
+  <!-- N logo -->
+  <rect x="5" y="5" width="20" height="20" fill="#006699" stroke="#00ffff" stroke-width="1"/>
+  <text x="9" y="21" font-family="'Times New Roman', serif" font-weight="bold" font-size="18" fill="#00ffff">N</text>
+  <!-- Text -->
+  <text x="30" y="14" font-family="'Trebuchet MS', Arial, sans-serif" font-weight="bold" font-size="8" fill="#ffffff">NETSCAPE</text>
+  <text x="32" y="23" font-family="'Trebuchet MS', Arial, sans-serif" font-weight="bold" font-size="10" fill="#ffcc00">NOW 4.0</text>
+</svg>
