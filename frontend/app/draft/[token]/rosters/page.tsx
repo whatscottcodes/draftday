@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { apiJson } from "@/lib/api";
+import { apiJsonRetry } from "@/lib/api";
 import type { RostersState } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
 
@@ -15,14 +15,17 @@ export default function RostersPage({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiJson<RostersState>(`/api/draft/${token}/rosters`)
-      .then(setState)
+    apiJsonRetry<RostersState>(`/api/draft/${token}/rosters`)
+      .then((s) => {
+        setState(s);
+        setError(null);
+      })
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Failed to load rosters"),
       );
   }, [token]);
 
-  if (error) {
+  if (error && !state) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
         <p className="text-red-400">{error}</p>

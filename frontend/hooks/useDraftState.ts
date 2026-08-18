@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiJson, connectDraftSocket } from "@/lib/api";
+import { apiJsonRetry, connectDraftSocket } from "@/lib/api";
 import type { DraftState } from "@/lib/types";
 
 export function useDraftState(token: string) {
@@ -13,12 +13,22 @@ export function useDraftState(token: string) {
     let ws: WebSocket;
     let closed = false;
 
-    apiJson<DraftState>(`/api/draft/${token}/display`)
-      .then(setState)
+    apiJsonRetry<DraftState>(`/api/draft/${token}/display`)
+      .then((s) => {
+        setState(s);
+        setError(null);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
 
     const openSocket = () => {
-      ws = connectDraftSocket(token, setState, setConnected);
+      ws = connectDraftSocket(
+        token,
+        (s) => {
+          setState(s);
+          setError(null);
+        },
+        setConnected,
+      );
     };
     openSocket();
 

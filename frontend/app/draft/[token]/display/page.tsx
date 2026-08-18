@@ -14,7 +14,7 @@ export default function DisplayPage({
   const { token } = use(params);
   const { state, connected, error } = useDraftState(token);
 
-  if (error) {
+  if (error && !state) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-100 p-8">
         <p className="text-red-400">Failed to load draft: {error}</p>

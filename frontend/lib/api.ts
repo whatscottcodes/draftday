@@ -34,6 +34,23 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export async function apiJsonRetry<T>(
+  path: string,
+  attempts = 4,
+  delayMs = 5000,
+  init?: RequestInit,
+): Promise<T> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await apiJson<T>(path, init);
+    } catch (e) {
+      if (attempt === attempts) throw e;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 export function connectDraftSocket(
   token: string,
   onState: (state: DraftState) => void,

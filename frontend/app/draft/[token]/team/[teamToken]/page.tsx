@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
-import { apiJson, connectDraftSocket } from "@/lib/api";
+import { apiJson, apiJsonRetry, connectDraftSocket } from "@/lib/api";
 import type { TeamState } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
 
@@ -46,6 +46,7 @@ export default function TeamPage({
       setState(
         await apiJson<TeamState>(`/api/draft/${token}/team/${teamToken}`),
       );
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
@@ -54,7 +55,12 @@ export default function TeamPage({
   useEffect(() => {
     let ws: WebSocket;
     let closed = false;
-    fetchTeam();
+    apiJsonRetry<TeamState>(`/api/draft/${token}/team/${teamToken}`)
+      .then((s) => {
+        setState(s);
+        setError(null);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
     const openSocket = () => {
       ws = connectDraftSocket(token, () => fetchTeam(), setConnected);
     };
@@ -138,7 +144,7 @@ export default function TeamPage({
     }
   }
 
-  if (error) {
+  if (error && !state) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-100 p-4">
         <p className="text-red-400">{error}</p>
