@@ -4,7 +4,7 @@
 Usage:
     python scripts/seed_league.py \
         --url https://draftday-backend.onrender.com \
-        --frontend https://draftday.vercel.app \
+        --frontend https://draftnight-bng.vercel.app \
         --name "League 2026" --season 2026 --num-rounds 15 \
         --teams "Team A,Team B,Team C"
 """
