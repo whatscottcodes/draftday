@@ -213,7 +213,7 @@ export default function DisplayPage({
 
       {/* Footer */}
       <footer className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-2 border-t border-slate-900">
-        <span>DRAFT NIGHT 2002 • LIVE PROJECTOR DISPLAY</span>
+        <span>DRAFT NIGHT • LIVE PROJECTOR DISPLAY</span>
         <span>API: {API_URL}</span>
       </footer>
     </main>
