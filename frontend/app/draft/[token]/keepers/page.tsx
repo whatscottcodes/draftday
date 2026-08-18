@@ -19,11 +19,8 @@ export default function KeeperAdminPage({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  // Draft CSV upload
-  const [draftFile, setDraftFile] = useState<File | null>(null);
-  const [draftYear, setDraftYear] = useState("");
-  const [draftRole, setDraftRole] = useState<"previous" | "prior">("previous");
-  const [useDraftId, setUseDraftId] = useState(0);
+  // Historical draft sources
+  const [useDraftIds, setUseDraftIds] = useState({ previous: 0, prior: 0 });
 
   // Yahoo config
   const [yLeague, setYLeague] = useState("");
@@ -42,6 +39,8 @@ export default function KeeperAdminPage({
 
   // Review
   const [review, setReview] = useState<KeeperPreviewTeam[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [dirtyTeamIds, setDirtyTeamIds] = useState<Set<number>>(new Set());
   const [lastRun, setLastRun] = useState<string | null>(null);
 
   const editable = setup?.league.editable ?? false;
@@ -74,11 +73,16 @@ export default function KeeperAdminPage({
       }
       setMappings(m);
       setReview(s.preview.teams);
+      setSelectedTeamId((current) =>
+        s.preview.teams.some((team) => team.team_id === current)
+          ? current
+          : (s.preview.teams[0]?.team_id ?? null),
+      );
+      setDirtyTeamIds(new Set());
       setYLeague(s.yahoo.league_id_external);
       setYGameId(s.yahoo.game_id ? String(s.yahoo.game_id) : "");
       setYSeason(s.yahoo.season_id);
       setYWeek(s.yahoo.week ? String(s.yahoo.week) : "");
-      setDraftYear(s.draft.previous_year || "");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
@@ -131,33 +135,32 @@ export default function KeeperAdminPage({
     }
   }
 
-  async function uploadDraft() {
-    if (!draftFile || !draftYear) return;
+  async function uploadDraft(file: File, role: "previous" | "prior") {
     const fd = new FormData();
-    fd.append("file", draftFile);
-    fd.append("year", draftYear);
-    fd.append("role", draftRole);
+    fd.append("file", file);
+    fd.append("role", role);
     const body = await postForm(
-      `/api/draft/${token}/admin/keepers/draft-csv`,
+      `/api/draft/${token}/admin/keepers/draft-html`,
       fd,
-      "Uploading draft…",
+      "Parsing ClickyDraft history…",
     );
     if (body) {
-      flash(true, `Draft ${draftYear} (${draftRole}) loaded`);
+      flash(true, `Loaded ${body.year} ${role === "previous" ? "previous season" : "season before"} (${body.total_picks} picks)`);
       await loadSetup();
     }
   }
 
-  async function useDraft() {
-    if (!useDraftId) return;
+  async function loadAppDraft(role: "previous" | "prior") {
+    const draftId = useDraftIds[role];
+    if (!draftId) return;
     const body = await postJson(
       `/api/draft/${token}/admin/keepers/use-draft`,
-      { draft_league_id: useDraftId, role: draftRole },
+      { draft_league_id: draftId, role },
       "Loading draft…",
     );
     if (body) {
-      flash(true, `Loaded ${body.year} (${draftRole})`);
-      setUseDraftId(0);
+      flash(true, `Loaded ${body.year} ${role === "previous" ? "previous season" : "season before"}`);
+      setUseDraftIds((current) => ({ ...current, [role]: 0 }));
       await loadSetup();
     }
   }
@@ -172,6 +175,38 @@ export default function KeeperAdminPage({
     );
     if (body) {
       flash(true, "Rosters loaded");
+      await loadSetup();
+    }
+  }
+
+  async function uploadRosterHtml(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const body = await postForm(
+      `/api/draft/${token}/admin/keepers/rosters-html`,
+      fd,
+      "Parsing Yahoo rosters…",
+    );
+    if (body) {
+      const week = body.week ? ` for week ${body.week}` : "";
+      flash(
+        true,
+        `Loaded ${Object.keys(body.teams ?? {}).length} teams and ${body.player_count ?? 0} players${week}`,
+      );
+      await loadSetup();
+    }
+  }
+
+  async function uploadTransactionsHtml(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const body = await postForm(
+      `/api/draft/${token}/admin/keepers/transactions-html`,
+      fd,
+      "Parsing Yahoo transactions…",
+    );
+    if (body) {
+      flash(true, `Loaded ${body.trade_count ?? 0} traded players`);
       await loadSetup();
     }
   }
@@ -286,6 +321,8 @@ export default function KeeperAdminPage({
       const teams = (body.preview as KeeperPreviewTeam[]).length;
       const warnings = (body.warnings as string[]).length;
       setReview(body.preview as KeeperPreviewTeam[]);
+      setSelectedTeamId((body.preview as KeeperPreviewTeam[])[0]?.team_id ?? null);
+      setDirtyTeamIds(new Set());
       setLastRun(
         `${body.total} keepable players across ${teams} teams in ${ms}ms` +
           (warnings ? ` · ${warnings} warnings` : ""),
@@ -298,10 +335,12 @@ export default function KeeperAdminPage({
     }
   }
 
-  async function saveKeepers() {
-    const teams = review.map((t) => ({
-      team_id: t.team_id,
-      candidates: t.candidates.map((c) => ({
+  async function saveSelectedTeam() {
+    const team = review.find((item) => item.team_id === selectedTeamId);
+    if (!team) return;
+    const teams = [{
+      team_id: team.team_id,
+      candidates: team.candidates.map((c) => ({
         player_name: c.player_name,
         position: c.position,
         nfl_team: c.nfl_team,
@@ -310,15 +349,28 @@ export default function KeeperAdminPage({
         years_kept: c.years_kept,
         keepable_until_year: c.keepable_until_year,
       })),
-    }));
+    }];
     const body = await postJson(
       `/api/draft/${token}/admin/keepers/save`,
       { teams },
-      "Saving keepers…",
+      `Saving ${team.team_name}…`,
     );
     if (body) {
-      flash(true, `Saved — ${body.stats?.created ?? 0} created`);
-      await loadSetup();
+      setDirtyTeamIds((current) => {
+        const next = new Set(current);
+        next.delete(team.team_id);
+        return next;
+      });
+      setSetup((current) => current ? {
+        ...current,
+        preview: {
+          ...current.preview,
+          saved_at: body.saved_at,
+          reviewed_team_ids: body.reviewed_team_ids,
+          team_saved_at: body.team_saved_at,
+        },
+      } : current);
+      flash(true, `Saved ${team.team_name}`);
     }
   }
 
@@ -350,6 +402,9 @@ export default function KeeperAdminPage({
     candIdx: number,
     patch: Partial<KeeperPreviewCandidate>,
   ) {
+    if (selectedTeamId !== null) {
+      setDirtyTeamIds((current) => new Set(current).add(selectedTeamId));
+    }
     setReview((prev) =>
       prev.map((t, ti) =>
         ti === teamIdx
@@ -365,6 +420,9 @@ export default function KeeperAdminPage({
   }
 
   function removeCandidate(teamIdx: number, candIdx: number) {
+    if (selectedTeamId !== null) {
+      setDirtyTeamIds((current) => new Set(current).add(selectedTeamId));
+    }
     setReview((prev) =>
       prev.map((t, ti) =>
         ti === teamIdx
@@ -378,6 +436,16 @@ export default function KeeperAdminPage({
     () => review.reduce((n, t) => n + t.candidates.length, 0),
     [review],
   );
+  const selectedTeamIndex = review.findIndex(
+    (team) => team.team_id === selectedTeamId,
+  );
+  const selectedTeam = selectedTeamIndex >= 0 ? review[selectedTeamIndex] : null;
+  const reviewedTeamIds = new Set(setup?.preview.reviewed_team_ids ?? []);
+  const selectedWarnings = selectedTeam
+    ? setup?.preview.warnings.filter((warning) =>
+        warning.startsWith(`${selectedTeam.team_name}:`),
+      ) ?? []
+    : [];
 
   if (error && !setup) {
     return (
@@ -425,42 +493,76 @@ export default function KeeperAdminPage({
         </div>
       )}
 
-      {/* Step 1: previous-season drafts */}
+      {/* Step 1: historical drafts */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
         <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          1 · Previous draft CSVs (clickydraft export)
+          1 · ClickyDraft history
         </h2>
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex-1 min-w-40">
-            <label className="text-xs text-slate-500">Previous-season draft</label>
-            <input
-              type="file"
-              accept=".csv"
-              className="input"
-              onChange={(e) => setDraftFile(e.target.files?.[0] ?? null)}
-            />
-          </div>
-          <input
-            className="input w-24"
-            placeholder="2025"
-            value={draftYear}
-            onChange={(e) => setDraftYear(e.target.value)}
-          />
-          <select
-            className="input w-36"
-            value={draftRole}
-            onChange={(e) => setDraftRole(e.target.value as "previous" | "prior")}
-          >
-            <option value="previous">Previous season</option>
-            <option value="prior">Season before (2-yr rule)</option>
-          </select>
-          <button
-            className="btn-primary"
-            disabled={!draftFile || !draftYear || !!busy}
-            onClick={uploadDraft}
-          >
-            Upload
-          </button>
+        <p className="mb-3 text-xs text-slate-400">
+          Load both seasons so keeper costs and the two-year eligibility rule
+          can be calculated. For either season, upload the saved ClickyDraft
+          HTML page or select a completed draft already in this app.
+        </p>
+        <div className="space-y-3">
+          {(["previous", "prior"] as const).map((role) => {
+            const isPrevious = role === "previous";
+            const loadedYear = isPrevious
+              ? setup.draft.previous_year
+              : setup.draft.prior_year;
+            return (
+              <div
+                key={role}
+                className="rounded-xl border border-slate-800 bg-slate-950/30 p-3"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-200">
+                    {isPrevious ? "Previous season" : "Season before (2-year rule)"}
+                  </h3>
+                  <span className={loadedYear ? "text-xs text-emerald-300" : "text-xs text-amber-300"}>
+                    {loadedYear ? `${loadedYear} loaded` : "Required"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="file"
+                    accept=".html,.htm,text/html"
+                    className="min-w-48 flex-1 text-xs text-slate-400"
+                    disabled={!!busy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) uploadDraft(file, role);
+                      e.target.value = "";
+                    }}
+                  />
+                  <span className="text-xs text-slate-600">or</span>
+                  <select
+                    className="input min-w-48 flex-1"
+                    value={useDraftIds[role]}
+                    onChange={(e) =>
+                      setUseDraftIds((current) => ({
+                        ...current,
+                        [role]: Number(e.target.value),
+                      }))
+                    }
+                  >
+                    <option value={0}>select completed app draft</option>
+                    {setup.previous_drafts.map((draft) => (
+                      <option key={draft.id} value={draft.id}>
+                        {draft.name} · {draft.season} · {draft.picks} picks
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn-secondary"
+                    disabled={!useDraftIds[role] || !!busy}
+                    onClick={() => loadAppDraft(role)}
+                  >
+                    Load
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
         <div className="mt-3 space-y-1 text-sm text-slate-400">
           {Object.entries(setup.draft.draft_counts).map(([year, byTeam]) => (
@@ -473,58 +575,71 @@ export default function KeeperAdminPage({
           ))}
           {!setup.draft.has_draft && (
             <p className="text-slate-600">
-              No draft loaded yet. Upload a clickydraft CSV or use a completed
-              draft from this app.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-4 border-t border-slate-800 pt-4">
-          <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
-            or use a completed draft from this app
-          </h3>
-          <div className="flex flex-wrap items-end gap-2">
-            <select
-              className="input flex-1 min-w-40"
-              value={useDraftId}
-              onChange={(e) => setUseDraftId(Number(e.target.value))}
-            >
-              <option value={0}>— select a completed draft —</option>
-              {setup.previous_drafts.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name} · {d.season} · {d.picks} picks
-                </option>
-              ))}
-            </select>
-            <select
-              className="input w-36"
-              value={draftRole}
-              onChange={(e) => setDraftRole(e.target.value as "previous" | "prior")}
-            >
-              <option value="previous">Previous season</option>
-              <option value="prior">Season before (2-yr rule)</option>
-            </select>
-            <button
-              className="btn-primary"
-              disabled={!useDraftId || !!busy}
-              onClick={useDraft}
-            >
-              Load
-            </button>
-          </div>
-          {setup.previous_drafts.length === 0 && (
-            <p className="text-xs text-slate-600 mt-1">
-              No completed drafts in this app yet.
+              No historical drafts loaded yet.
             </p>
           )}
         </div>
       </section>
 
-      {/* Step 2: roster data (Yahoo or CSV) */}
+      {/* Step 2: roster data */}
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
         <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-3">
-          2 · Roster data (Yahoo)
+          2 · Yahoo rosters and transactions
         </h2>
+        <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/20 p-4 mb-4">
+          <label className="block text-sm font-semibold text-slate-200 mb-1">
+            Upload the Yahoo Starting Rosters page
+          </label>
+          <p className="text-xs text-slate-400 mb-3">
+            In Yahoo, open Starting Rosters with the Team tab selected, choose
+            the desired week, and save the complete webpage as HTML. One file
+            contains every league team.
+          </p>
+          <input
+            type="file"
+            accept=".html,.htm,text/html"
+            className="text-xs text-slate-400"
+            disabled={!!busy}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) uploadRosterHtml(file);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        <div className="rounded-xl border border-slate-700 bg-slate-950/30 p-4 mb-4">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label className="text-sm font-semibold text-slate-200">
+              Upload the Yahoo Transactions page
+            </label>
+            <span className={setup.transactions.loaded ? "text-xs text-emerald-300" : "text-xs text-amber-300"}>
+              {setup.transactions.loaded
+                ? `${setup.transactions.trade_count} traded players loaded`
+                : "Required"}
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mb-3">
+            Save the league Transactions page as HTML. Trades are matched back
+            to the original drafting team; players without a draft pick receive
+            a round 11 cost.
+          </p>
+          <input
+            type="file"
+            accept=".html,.htm,text/html"
+            className="text-xs text-slate-400"
+            disabled={!!busy}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) uploadTransactionsHtml(file);
+              e.target.value = "";
+            }}
+          />
+        </div>
+        <details className="border-t border-slate-800 pt-3">
+          <summary className="cursor-pointer text-xs font-bold uppercase tracking-widest text-slate-500">
+            Legacy Yahoo API and roster CSV options
+          </summary>
+          <div className="mt-3">
         <div className="grid grid-cols-2 gap-2 mb-3">
           <input
             className="input"
@@ -610,23 +725,27 @@ export default function KeeperAdminPage({
               <button className="btn-primary" onClick={fetchRosters} disabled={!setup.yahoo.has_token || !!busy}>
                 Fetch rosters from Yahoo
               </button>
-              <input
-                type="file"
-                accept=".csv"
-                multiple
-                className="text-xs text-slate-500"
-                onChange={(e) => {
-                  if (e.target.files?.length) uploadRosters(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <span className="text-xs text-slate-600">or upload roster CSVs</span>
             </div>
           </div>
         )}
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              type="file"
+              accept=".csv"
+              multiple
+              className="text-xs text-slate-500"
+              onChange={(e) => {
+                if (e.target.files?.length) uploadRosters(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <span className="text-xs text-slate-600">upload legacy roster CSVs</span>
+          </div>
+          </div>
+        </details>
         <p className="mt-3 text-xs text-slate-400">
           {setup.rosters.teams.length > 0
-            ? `${setup.rosters.teams.length} Yahoo teams found: ${setup.rosters.teams.join(", ")}${setup.rosters.player_count > 0 ? ` (${setup.rosters.player_count} rostered players loaded)` : " (rosters not loaded yet)"}`
+            ? `${setup.rosters.teams.length} Yahoo teams found${setup.rosters.source ? ` from ${setup.rosters.source}` : ""}${setup.rosters.week ? ` (week ${setup.rosters.week})` : ""}: ${setup.rosters.teams.join(", ")}${setup.rosters.player_count > 0 ? ` (${setup.rosters.player_count} rostered players loaded)` : " (rosters not loaded yet)"}`
             : "No Yahoo team or roster data loaded yet."}
         </p>
       </section>
@@ -638,7 +757,7 @@ export default function KeeperAdminPage({
         </h2>
         <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 text-xs text-slate-500 mb-1 px-1">
           <span>App team</span>
-          <span>Draft CSV column</span>
+          <span>ClickyDraft team</span>
           <span>Yahoo team</span>
           <span />
         </div>
@@ -698,10 +817,12 @@ export default function KeeperAdminPage({
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">
-            4 · Review &amp; save ({previewTotal})
+            4 · Review by team ({previewTotal})
           </h2>
           {setup.preview.saved_at && (
-            <span className="text-xs text-slate-500">saved {setup.preview.saved_at}</span>
+            <span className="text-xs text-slate-500">
+              {setup.preview.reviewed_team_ids.length}/{review.length} teams saved
+            </span>
           )}
         </div>
         <div className="flex flex-wrap gap-2 mb-2">
@@ -720,13 +841,6 @@ export default function KeeperAdminPage({
               ? "Identifying…"
               : "Identify keepable players"}
           </button>
-          <button
-            className="btn-primary"
-            disabled={review.length === 0 || !editable || !!busy}
-            onClick={saveKeepers}
-          >
-            Save keepers
-          </button>
           <button className="btn-secondary" onClick={exportCsv} disabled={!!busy}>
             Export per-team CSVs
           </button>
@@ -737,11 +851,35 @@ export default function KeeperAdminPage({
           </p>
         )}
         <p className="mb-3 text-xs text-slate-600">
-          Computes costs from the drafts, rosters, and mappings loaded above.
+          Run identification only when source data changes. Saved team edits,
+          including adjusted rounds, are restored when you return before the draft.
         </p>
-        {setup.preview.warnings.length > 0 && (
+        {review.length > 0 && (
+          <div className="mb-4 rounded-xl border border-slate-800 bg-slate-950/30 p-3">
+            <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-slate-500">
+              Team to review
+            </label>
+            <select
+              className="input w-full"
+              value={selectedTeamId ?? ""}
+              onChange={(event) => setSelectedTeamId(Number(event.target.value))}
+            >
+              {review.map((team) => {
+                const dirty = dirtyTeamIds.has(team.team_id);
+                const saved = reviewedTeamIds.has(team.team_id);
+                const status = dirty ? "unsaved changes" : saved ? "saved" : "not saved";
+                return (
+                  <option key={team.team_id} value={team.team_id}>
+                    {team.team_name} ({team.candidates.length}) - {status}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        )}
+        {selectedWarnings.length > 0 && (
           <ul className="mb-4 space-y-0.5 text-xs text-amber-300/90 bg-amber-900/20 rounded-lg p-2">
-            {setup.preview.warnings.map((w, i) => (
+            {selectedWarnings.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
           </ul>
@@ -752,14 +890,22 @@ export default function KeeperAdminPage({
             rosters.
           </p>
         ) : (
-          <div className="space-y-4">
-            {review.map((team, ti) => (
-              <div key={team.team_id}>
-                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1">
-                  {team.team_name} ({team.candidates.length})
-                </h3>
+          selectedTeam && (
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-200">
+                    {selectedTeam.team_name} ({selectedTeam.candidates.length})
+                  </h3>
+                  <span className="text-xs text-slate-500">
+                    {dirtyTeamIds.has(selectedTeam.team_id)
+                      ? "Unsaved changes"
+                      : reviewedTeamIds.has(selectedTeam.team_id)
+                        ? "Saved"
+                        : "Not saved"}
+                  </span>
+                </div>
                 <div className="space-y-1.5">
-                  {team.candidates.map((c, ci) => (
+                  {selectedTeam.candidates.map((c, ci) => (
                     <div
                       key={`${c.player_name}-${ci}`}
                       className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900 px-3 py-1.5 text-sm"
@@ -777,26 +923,32 @@ export default function KeeperAdminPage({
                         min={1}
                         value={c.cost_round}
                         onChange={(e) =>
-                          updateCandidate(ti, ci, {
+                          updateCandidate(selectedTeamIndex, ci, {
                             cost_round: Number(e.target.value),
                           })
                         }
                       />
                       <button
                         className="text-xs text-red-400 hover:underline"
-                        onClick={() => removeCandidate(ti, ci)}
+                        onClick={() => removeCandidate(selectedTeamIndex, ci)}
                       >
                         Remove
                       </button>
                     </div>
                   ))}
-                  {team.candidates.length === 0 && (
+                  {selectedTeam.candidates.length === 0 && (
                     <p className="text-xs text-slate-600">No keepable players.</p>
                   )}
                 </div>
+                <button
+                  className="btn-primary mt-3"
+                  disabled={!editable || !!busy}
+                  onClick={saveSelectedTeam}
+                >
+                  Save {selectedTeam.team_name}
+                </button>
               </div>
-            ))}
-          </div>
+          )
         )}
       </section>
     </main>

@@ -398,6 +398,7 @@ export default function AdminPage({
           <OverridePick
             state={state}
             players={players}
+            keepers={keepers}
             onPick={(slotId, playerId) =>
               makePickForCurrent(slotId, playerId)
             }
@@ -766,10 +767,12 @@ export default function AdminPage({
 function OverridePick({
   state,
   players,
+  keepers,
   onPick,
 }: {
   state: DraftState;
   players: AdminConfig["players"];
+  keepers: AdminConfig["keepers"];
   onPick: (slotId: number | undefined, playerId: number) => void;
 }) {
   const [slotId, setSlotId] = useState<string>("");
@@ -792,9 +795,18 @@ function OverridePick({
     ? state.board.find((b) => b.slot_id === Number(slotId))
     : state.current_slot;
 
+  const draftedIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const s of state.board) {
+      if (s.player_id != null) ids.add(s.player_id);
+    }
+    for (const k of keepers) ids.add(k.player_id);
+    return ids;
+  }, [state.board, keepers]);
+
   const available = useMemo(
-    () => players.filter((p) => !p.taken),
-    [players],
+    () => players.filter((p) => !p.taken && !draftedIds.has(p.id)),
+    [players, draftedIds],
   );
 
   const matches = useMemo(() => {
@@ -805,11 +817,11 @@ function OverridePick({
             p.name.toLowerCase().includes(q) ||
             (p.nfl_team ?? "").toLowerCase().includes(q),
         )
-      : available.slice(0, 50);
-    return list
+      : available;
+    const ranked = list
       .slice()
-      .sort((a, b) => (a.rank ?? 1 << 30) - (b.rank ?? 1 << 30))
-      .slice(0, 60);
+      .sort((a, b) => (a.rank ?? 1 << 30) - (b.rank ?? 1 << 30));
+    return q ? ranked : ranked.slice(0, 20);
   }, [available, query]);
 
   return (
@@ -856,7 +868,7 @@ function OverridePick({
                 className="w-full text-left px-3 py-1.5 flex items-center gap-2 hover:bg-slate-800"
                 onClick={() => {
                   setPlayerId(String(p.id));
-                  setQuery(p.name);
+                  setQuery("");
                   setOpen(false);
                 }}
               >

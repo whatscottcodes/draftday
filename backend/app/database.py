@@ -1,11 +1,14 @@
 import os
+from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
-    "sqlite:///./draftnight.db",
+    f"sqlite:///{_BACKEND_DIR / 'draftnight.db'}",
 )
 
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}

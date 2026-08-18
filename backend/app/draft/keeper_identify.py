@@ -38,24 +38,37 @@ def identify_candidates(
     draft_picks: dict[str, list[dict]],
     prior_draft_picks: dict[str, list[dict]],
     rosters: dict[str, list[dict]],
+    transactions: list[dict],
     mappings: dict[int, dict],
     season: str,
 ) -> tuple[list[dict], list[str]]:
     """Compute keepable players and round costs for each app team.
 
     Rules (mirroring the keepers/ scripts):
-      - A player acquired off waivers ('was_added') is keepable in the 11th
-        round (its first keeper year).
-      - Otherwise the player must have been drafted in the previous season's
-        draft. Cost is round-1 when they were kept that season (the '(K)'
+      - A player missing from their current team's draft list is searched for
+        across the full draft board and treated as traded when found.
+      - A transaction-confirmed trade also uses the original pick from the
+        previous season's draft, regardless of the current fantasy team.
+      - A player drafted in round 1 or 2 of the previous season cannot be kept.
+      - A free agent or player with no previous-season draft pick costs round 11.
+      - Draft-based cost is round-1 when they were kept that season (the '(K)'
         marker), else round-2, floored at 1.
       - A player kept two consecutive seasons (kept in both the previous and
         the season before) is no longer keepable.
     """
     warnings: list[str] = []
-    by_team: dict[str, list[dict]] = {}
-    for team in app_teams:
-        by_team.setdefault(normalize_name(team["name"]), []).append(team)
+    traded_names = {
+        normalize_name(transaction.get("player", ""))
+        for transaction in transactions
+        if transaction.get("player")
+    }
+    traded_ids = {
+        str(transaction.get("player_id"))
+        for transaction in transactions
+        if transaction.get("player_id")
+    }
+    all_draft_picks = _index_all_picks(draft_picks)
+    all_prior_picks = _index_all_picks(prior_draft_picks)
 
     results: list[dict] = []
     for team in app_teams:
@@ -85,7 +98,14 @@ def identify_candidates(
             if not name:
                 continue
             nkey = normalize_name(name)
-            if player.get("was_added"):
+            player_id = str(player.get("player_id") or "")
+            transaction_trade = player_id in traded_ids or nkey in traded_names
+            team_pick = draft_index.get(nkey)
+            drafted = all_draft_picks.get(nkey) if team_pick is None else None
+            inferred_trade = drafted is not None
+            was_traded = transaction_trade or inferred_trade
+            pick = team_pick or (drafted["pick"] if drafted else None)
+            if not was_traded and player.get("was_added"):
                 team_results.append(
                     _candidate(
                         name,
@@ -97,11 +117,26 @@ def identify_candidates(
                     )
                 )
                 continue
-            pick = draft_index.get(nkey)
             if pick is None:
-                warnings.append(f"{team['name']}: {name} not found in previous draft")
+                reason = "traded player has no drafting team" if was_traded else "not found in previous draft"
+                warnings.append(f"{team['name']}: {name} {reason}; using round 11")
+                team_results.append(
+                    _candidate(
+                        name,
+                        player,
+                        None,
+                        cost_round=11,
+                        years_kept=0,
+                        season=season,
+                    )
+                )
                 continue
-            prior = prior_index.get(nkey)
+            if pick["round"] <= 2:
+                warnings.append(
+                    f"{team['name']}: {name} drafted in round {pick['round']} — cannot be kept"
+                )
+                continue
+            prior = all_prior_picks.get(nkey, {}).get("pick") or prior_index.get(nkey)
             if prior and prior.get("is_keeper") and pick.get("is_keeper"):
                 warnings.append(
                     f"{team['name']}: {name} kept 2 consecutive years — ineligible"
@@ -164,4 +199,12 @@ def _index_picks(picks: list[dict]) -> dict[str, dict]:
         key = normalize_name(name)
         if key not in index:
             index[key] = pick
+    return index
+
+
+def _index_all_picks(drafts: dict[str, list[dict]]) -> dict[str, dict]:
+    index: dict[str, dict] = {}
+    for team_name, picks in drafts.items():
+        for key, pick in _index_picks(picks).items():
+            index.setdefault(key, {"team": team_name, "pick": pick})
     return index

@@ -283,12 +283,19 @@ export interface KeeperSetup {
     has_rosters: boolean;
     teams: string[];
     week: number | null;
+    source: string;
     player_count: number;
+  };
+  transactions: {
+    loaded: boolean;
+    trade_count: number;
   };
   preview: {
     teams: KeeperPreviewTeam[];
     warnings: string[];
     saved_at: string | null;
+    reviewed_team_ids: number[];
+    team_saved_at: Record<string, string>;
   };
   yahoo: {
     configured: boolean;

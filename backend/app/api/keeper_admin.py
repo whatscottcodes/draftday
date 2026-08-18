@@ -10,7 +10,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..database import get_db
-from ..draft import draft_csv, engine, keeper_identify, state as state_builder
+from ..draft import (
+    clicky_draft,
+    draft_csv,
+    engine,
+    keeper_identify,
+    state as state_builder,
+    yahoo_html,
+    yahoo_transactions,
+)
 from ..draft import yahoo as yahoo_mod
 from ..draft.engine import DraftError
 from ..draft.keepers import clear_candidates, import_candidate_rows
@@ -145,6 +153,7 @@ def _build_preview(ws: dict, app_teams: list[dict], season: str):
         draft_picks=draft_picks,
         prior_draft_picks=prior_picks,
         rosters=rosters,
+        transactions=ws.get("transactions", []),
         mappings=mappings,
         season=season,
     )
@@ -172,6 +181,29 @@ def _rows_from_preview(teams: list[dict]) -> list[dict]:
 
 def _safe_filename(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9 _-]", "", name).strip() or "team"
+
+
+def _store_draft(ws: dict, year: str, role: str, picks: list[dict]) -> dict[str, int]:
+    picks_by_team: dict[str, list[dict]] = {}
+    for pick in picks:
+        picks_by_team.setdefault(pick["team"], []).append(
+            {
+                "round": pick["round"],
+                "position": pick["position"],
+                "nfl_team": pick["nfl_team"],
+                "name": pick["name"],
+                "is_keeper": pick["is_keeper"],
+            }
+        )
+    drafts = ws.setdefault("drafts", {})
+    drafts[year] = picks_by_team
+    ws["prior_year" if role == "prior" else "previous_year"] = year
+    previous = drafts.get(ws.get("previous_year", ""), {})
+    ws["draft_team_cols"] = sorted(previous)
+    ws.pop("preview", None)
+    ws.pop("preview_warnings", None)
+    ws.pop("saved_at", None)
+    return {name: len(team_picks) for name, team_picks in sorted(picks_by_team.items())}
 
 
 # ---------------------------------------------------------------- setup
@@ -242,14 +274,21 @@ def keeper_setup(token: str, db: Session = Depends(get_db)):
             "has_rosters": bool(ws.get("rosters")),
             "teams": yahoo_teams,
             "week": ws.get("roster_week"),
+            "source": ws.get("roster_source", ""),
             "player_count": sum(
                 len(rows) for rows in ws.get("rosters", {}).values()
             ),
+        },
+        "transactions": {
+            "loaded": "transactions" in ws,
+            "trade_count": len(ws.get("transactions", [])),
         },
         "preview": {
             "teams": preview,
             "warnings": ws.get("preview_warnings", []),
             "saved_at": saved_at,
+            "reviewed_team_ids": ws.get("reviewed_team_ids", []),
+            "team_saved_at": ws.get("team_saved_at", {}),
         },
         "yahoo": _masked_yahoo(_get_yahoo_config(db, league)),
         "previous_drafts": [
@@ -264,7 +303,7 @@ def keeper_setup(token: str, db: Session = Depends(get_db)):
     }
 
 
-# ---------------------------------------------------------------- draft csv
+# ---------------------------------------------------------------- draft sources
 
 
 @router.post("/draft/{token}/admin/keepers/draft-csv")
@@ -285,35 +324,44 @@ async def upload_draft_csv(
     if not picks:
         raise HTTPException(status_code=400, detail="No picks found in CSV")
     ws = _get_workspace(league)
-    drafts = ws.setdefault("drafts", {})
-    drafts[year] = {}
-    for pick in picks:
-        drafts[year].setdefault(pick["team"], []).append(
-            {
-                "round": pick["round"],
-                "position": pick["position"],
-                "nfl_team": pick["nfl_team"],
-                "name": pick["name"],
-                "is_keeper": pick["is_keeper"],
-            }
-        )
-    if role == "prior":
-        ws["prior_year"] = year
-    else:
-        ws["previous_year"] = year
-    ws["draft_team_cols"] = sorted({p["team"] for p in picks})
-    ws.pop("preview", None)
-    ws.pop("preview_warnings", None)
-    ws.pop("saved_at", None)
+    team_counts = _store_draft(ws, year, role, picks)
     _save_workspace(db, league, ws)
-    team_counts = {
-        col: len(picks_col)
-        for col, picks_col in sorted(drafts[year].items())
-    }
     return {
         "ok": True,
         "year": year,
         "role": role,
+        "teams": team_counts,
+        "total_picks": len(picks),
+    }
+
+
+@router.post("/draft/{token}/admin/keepers/draft-html")
+async def upload_draft_html(
+    token: str,
+    file: UploadFile = File(...),
+    role: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    league = _get_league(db, token)
+    if role not in ("previous", "prior"):
+        raise HTTPException(status_code=400, detail="role must be 'previous' or 'prior'")
+    try:
+        raw = (await file.read()).decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Draft HTML must be UTF-8 text") from exc
+    try:
+        year, draft_name, picks = clicky_draft.parse_draft(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    ws = _get_workspace(league)
+    team_counts = _store_draft(ws, year, role, picks)
+    _save_workspace(db, league, ws)
+    return {
+        "ok": True,
+        "year": year,
+        "role": role,
+        "draft_name": draft_name,
         "teams": team_counts,
         "total_picks": len(picks),
     }
@@ -343,11 +391,11 @@ def use_completed_draft(
             status_code=400,
             detail="Selected league is not a completed draft",
         )
-    picks_by_team: dict[str, list[dict]] = {}
+    picks: list[dict] = []
     for pick in completed.picks:
-        team_name = pick.team.name
-        picks_by_team.setdefault(team_name, []).append(
+        picks.append(
             {
+                "team": pick.team.name,
                 "round": pick.slot.round,
                 "position": pick.player.position,
                 "nfl_team": pick.player.nfl_team,
@@ -355,30 +403,21 @@ def use_completed_draft(
                 "is_keeper": pick.pick_type == PickType.KEEPER,
             }
         )
-    if not picks_by_team:
+    if not picks:
         raise HTTPException(
             status_code=400,
             detail=f"Completed draft '{completed.name}' has no picks",
         )
     year = completed.season
     ws = _get_workspace(league)
-    drafts = ws.setdefault("drafts", {})
-    drafts[year] = picks_by_team
-    if body.role == "prior":
-        ws["prior_year"] = year
-    else:
-        ws["previous_year"] = year
-    ws["draft_team_cols"] = sorted(picks_by_team.keys())
-    ws.pop("preview", None)
-    ws.pop("preview_warnings", None)
-    ws.pop("saved_at", None)
+    team_counts = _store_draft(ws, year, body.role, picks)
     _save_workspace(db, league, ws)
     return {
         "ok": True,
         "year": year,
         "role": body.role,
-        "teams": {name: len(picks) for name, picks in picks_by_team.items()},
-        "total_picks": sum(len(picks) for picks in picks_by_team.values()),
+        "teams": team_counts,
+        "total_picks": len(picks),
     }
 
 
@@ -408,11 +447,79 @@ async def upload_rosters_csv(
         if stem not in yahoo_teams:
             yahoo_teams.append(stem)
         loaded[stem] = len(rows)
+    if loaded:
+        ws["roster_source"] = "CSV"
+        ws["roster_week"] = None
     ws.pop("preview", None)
     ws.pop("preview_warnings", None)
     ws.pop("saved_at", None)
     _save_workspace(db, league, ws)
     return {"ok": True, "teams": loaded, "errors": errors}
+
+
+@router.post("/draft/{token}/admin/keepers/rosters-html")
+async def upload_rosters_html(
+    token: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Load every team from a saved Yahoo Starting Rosters HTML page."""
+    league = _get_league(db, token)
+    try:
+        raw = (await file.read()).decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Roster HTML must be UTF-8 text") from exc
+    try:
+        rosters, week = yahoo_html.parse_rosters(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    ws = _get_workspace(league)
+    ws["rosters"] = rosters
+    ws["yahoo_teams"] = list(rosters)
+    ws["roster_week"] = week
+    ws["roster_source"] = "Yahoo HTML"
+    ws.pop("preview", None)
+    ws.pop("preview_warnings", None)
+    ws.pop("saved_at", None)
+    _save_workspace(db, league, ws)
+    return {
+        "ok": True,
+        "teams": {name: len(players) for name, players in rosters.items()},
+        "week": week,
+        "player_count": sum(len(players) for players in rosters.values()),
+    }
+
+
+@router.post("/draft/{token}/admin/keepers/transactions-html")
+async def upload_transactions_html(
+    token: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    league = _get_league(db, token)
+    try:
+        raw = (await file.read()).decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=400, detail="Transaction HTML must be UTF-8 text"
+        ) from exc
+    try:
+        transactions = yahoo_transactions.parse_transactions(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    ws = _get_workspace(league)
+    ws["transactions"] = transactions
+    ws.pop("preview", None)
+    ws.pop("preview_warnings", None)
+    ws.pop("saved_at", None)
+    _save_workspace(db, league, ws)
+    return {
+        "ok": True,
+        "trades": transactions,
+        "trade_count": len(transactions),
+    }
 
 
 # ---------------------------------------------------------------- mappings
@@ -447,12 +554,22 @@ def identify_keepers(token: str, db: Session = Depends(get_db)):
     if not ws.get("drafts", {}).get(ws.get("previous_year", "")):
         raise HTTPException(
             status_code=400,
-            detail="Upload a previous-season draft CSV first",
+            detail="Upload or select the previous-season draft first",
+        )
+    if not ws.get("drafts", {}).get(ws.get("prior_year", "")):
+        raise HTTPException(
+            status_code=400,
+            detail="Upload or select the season-before draft for the two-year keeper rule",
         )
     if not ws.get("rosters"):
         raise HTTPException(
             status_code=400,
-            detail="No roster data. Fetch from Yahoo or upload roster CSVs first.",
+            detail="Upload a Yahoo Starting Rosters HTML file first.",
+        )
+    if "transactions" not in ws:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload the Yahoo Transactions HTML file first.",
         )
     app_teams = [
         {"id": t.id, "name": t.name} for t in league.teams
@@ -460,6 +577,8 @@ def identify_keepers(token: str, db: Session = Depends(get_db)):
     preview, warnings = _build_preview(ws, app_teams, league.season)
     ws["preview"] = preview
     ws["preview_warnings"] = warnings
+    ws["reviewed_team_ids"] = []
+    ws["team_saved_at"] = {}
     ws.pop("saved_at", None)
     _save_workspace(db, league, ws)
     return {
@@ -480,11 +599,11 @@ def save_keepers(
     league = _get_league(db, token)
     ws = _get_workspace(league)
     if body and body.teams:
-        preview = [
+        submitted = [
             {
                 "team_id": t.team_id,
                 "team_name": next(
-                    (x["name"] for x in league.teams if x.id == t.team_id),
+                    (x.name for x in league.teams if x.id == t.team_id),
                     f"team-{t.team_id}",
                 ),
                 "candidates": [
@@ -502,23 +621,53 @@ def save_keepers(
             }
             for t in body.teams
         ]
+        valid_team_ids = {team.id for team in league.teams}
+        submitted_ids = {team["team_id"] for team in submitted}
+        if not submitted_ids.issubset(valid_team_ids):
+            raise HTTPException(status_code=400, detail="Unknown team in keeper review")
+        submitted_by_id = {team["team_id"]: team for team in submitted}
+        preview = []
+        for team in ws.get("preview", []):
+            team_id = team.get("team_id")
+            preview.append(submitted_by_id.pop(team_id, team))
+        preview.extend(submitted_by_id.values())
+        rows = _rows_from_preview(submitted)
+        for candidate in list(league.keeper_candidates):
+            if candidate.team_id in submitted_ids:
+                db.delete(candidate)
+        db.flush()
     else:
         preview = ws.get("preview", [])
+        submitted_ids = {team["team_id"] for team in preview}
+        rows = _rows_from_preview(preview)
+        clear_candidates(db, league)
     if not preview:
         raise HTTPException(
             status_code=400,
             detail="No keeper preview to save. Run identification first.",
         )
-    rows = _rows_from_preview(preview)
-    clear_candidates(db, league)
     stats = import_candidate_rows(db, league, rows, source="admin")
     ws["preview"] = preview
     ws["preview_warnings"] = ws.get("preview_warnings", [])
     from ..models import utcnow
 
-    ws["saved_at"] = utcnow().isoformat()
+    saved_at = utcnow().isoformat()
+    ws["saved_at"] = saved_at
+    reviewed = {int(team_id) for team_id in ws.get("reviewed_team_ids", [])}
+    reviewed.update(submitted_ids)
+    ws["reviewed_team_ids"] = sorted(reviewed)
+    team_saved_at = dict(ws.get("team_saved_at", {}))
+    for team_id in submitted_ids:
+        team_saved_at[str(team_id)] = saved_at
+    ws["team_saved_at"] = team_saved_at
     _save_workspace(db, league, ws)
-    return {"ok": True, "stats": stats}
+    return {
+        "ok": True,
+        "stats": stats,
+        "saved_at": saved_at,
+        "reviewed_team_ids": ws["reviewed_team_ids"],
+        "team_saved_at": team_saved_at,
+    }
 
 
 @router.get("/draft/{token}/admin/keepers/export")
@@ -775,6 +924,7 @@ async def fetch_yahoo(token: str, db: Session = Depends(get_db)):
     ws["rosters"] = rosters
     ws["yahoo_teams"] = list(rosters.keys())
     ws["roster_week"] = config.week
+    ws["roster_source"] = "Yahoo API"
     ws.pop("preview", None)
     ws.pop("preview_warnings", None)
     ws.pop("saved_at", None)

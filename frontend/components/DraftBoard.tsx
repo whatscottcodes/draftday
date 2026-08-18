@@ -16,8 +16,10 @@ export function DraftBoard({ state }: { state: DraftState }) {
   const byRound = (round: number) =>
     state.board.filter((s) => s.round === round);
 
-  const cellFor = (round: number, teamId: number): BoardSlot | null =>
-    byRound(round).find((s) => s.drafting_team_id === teamId) ?? null;
+  const cellFor = (round: number, teamId: number): BoardSlot[] =>
+    byRound(round)
+      .filter((s) => s.drafting_team_id === teamId)
+      .sort((a, b) => a.pick_number - b.pick_number);
 
   const roundRows = Array.from({ length: state.num_rounds }, (_, i) => i + 1);
 
@@ -46,52 +48,60 @@ export function DraftBoard({ state }: { state: DraftState }) {
                 {round}
               </td>
               {teams.map((t) => {
-                const slot = cellFor(round, t.id);
-                const traded =
-                  slot && slot.original_team_id !== slot.drafting_team_id;
+                const slots = cellFor(round, t.id);
                 return (
                   <td key={t.id} className="px-1 py-1">
-                    {slot && slot.player_name ? (
-                      <div
-                        className="rounded-md border px-1.5 py-1"
-                        style={{
-                          backgroundColor: positionColor(slot.position ?? ""),
-                          borderColor: positionColor(slot.position ?? ""),
-                          color: CARD_TEXT,
-                        }}
-                        title={slot.player_name}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="truncate font-medium">
-                            {slot.player_name}
-                          </span>
-                          {(slot.pick_type === "keeper" || slot.status === "KEEPER") && (
-                            <span
-                              className="badge bg-slate-900/30 text-slate-900"
-                              title="Logged as keeper"
+                    {slots.length > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        {slots.map((slot) => {
+                          const traded =
+                            slot.original_team_id !== slot.drafting_team_id;
+                          return slot.player_name ? (
+                            <div
+                              key={slot.slot_id}
+                              className="rounded-md border px-1.5 py-1"
+                              style={{
+                                backgroundColor: positionColor(slot.position ?? ""),
+                                borderColor: positionColor(slot.position ?? ""),
+                                color: CARD_TEXT,
+                              }}
+                              title={slot.player_name}
                             >
-                              K
-                            </span>
-                          )}
-                          {traded && (
-                            <span
-                              className="badge bg-slate-900/30 text-slate-900"
-                              title={`Originated with ${originalTeamName(state, slot)}`}
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="truncate font-medium">
+                                  {slot.player_name}
+                                </span>
+                                {(slot.pick_type === "keeper" || slot.status === "KEEPER") && (
+                                  <span
+                                    className="badge bg-slate-900/30 text-slate-900"
+                                    title="Logged as keeper"
+                                  >
+                                    K
+                                  </span>
+                                )}
+                                {traded && (
+                                  <span
+                                    className="badge bg-slate-900/30 text-slate-900"
+                                    title={`Originated with ${originalTeamName(state, slot)}`}
+                                  >
+                                    {originalTeamShort(state, slot)}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] font-bold opacity-80">
+                                {slot.position}
+                                {slot.nfl_team ? ` · ${slot.nfl_team}` : ""}
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              key={slot.slot_id}
+                              className={`rounded-md border px-1.5 py-1 ${STATUS_COLORS[slot.status]}`}
                             >
-                              {originalTeamShort(state, slot)}
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[10px] font-bold opacity-80">
-                          {slot.position}
-                          {slot.nfl_team ? ` · ${slot.nfl_team}` : ""}
-                        </div>
-                      </div>
-                    ) : slot ? (
-                      <div
-                        className={`rounded-md border px-1.5 py-1 ${STATUS_COLORS[slot.status]}`}
-                      >
-                        —
+                              —
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="rounded-md border border-dashed border-slate-800 px-1.5 py-1 text-slate-700">
