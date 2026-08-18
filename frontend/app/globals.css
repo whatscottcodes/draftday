@@ -10,7 +10,7 @@
 body {
   color: var(--foreground);
   background-color: var(--background);
-  background-image: url("/assets/backgrounds/carbon.svg");
+  background-image: url("/assets/backgrounds/stars.svg");
   background-repeat: repeat;
   font-family: Verdana, Tahoma, "Segoe UI", Arial, sans-serif;
   image-rendering: pixelated;
