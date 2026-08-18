@@ -23,3 +23,9 @@ next-env.d.ts
 Thumbs.db
 .idea/
 .vscode/
+
+# Windows download metadata
+*:Zone.Identifier
+
+# Design docs
+Draft_Night_Web_1_0_Redesign_Spec.pdf

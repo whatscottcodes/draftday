@@ -17,7 +17,7 @@ interface CreatedLeague {
 }
 
 export default function Home() {
-  const [name, setName] = useState("Draft Night 2002");
+  const [name, setName] = useState("Draft Night");
   const [season, setSeason] = useState("2026");
   const [numTeams, setNumTeams] = useState(12);
   const [numRounds, setNumRounds] = useState(15);
@@ -166,13 +166,13 @@ export default function Home() {
           />
         </div>
         <p className="text-xs uppercase tracking-widest font-mono text-yellow-300 font-bold">
-          ★ PREMIER FANTASY FOOTBALL LIVE DRAFT COMMAND CENTER • EST. 2002 ★
+          ★ PREMIER FANTASY FOOTBALL LIVE DRAFT COMMAND CENTER • EST. 2026 ★
         </p>
 
         {/* Retro Marquee */}
         <div className="retro-marquee-container shadow-[2px_2px_0px_#000000]">
           <div className="retro-marquee-content">
-            +++ WELCOME TO DRAFT NIGHT 2002 +++ REAL-TIME WEBSOCKET SYNC +++ NO
+            +++ WELCOME TO DRAFT NIGHT 2026 +++ REAL-TIME WEBSOCKET SYNC +++ NO
             POP-UPS +++ KEEPER IMPORT SUPPORTED +++ NETSCAPE 4.0 CERTIFIED +++
           </div>
         </div>
