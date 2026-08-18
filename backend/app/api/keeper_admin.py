@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import csv
 import io
 import re
@@ -307,7 +306,7 @@ def keeper_setup(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/draft/{token}/admin/keepers/draft-csv")
-async def upload_draft_csv(
+def upload_draft_csv(
     token: str,
     file: UploadFile = File(...),
     year: str = Form(...),
@@ -319,7 +318,7 @@ async def upload_draft_csv(
         raise HTTPException(status_code=400, detail="year must be like 2024")
     if role not in ("previous", "prior"):
         raise HTTPException(status_code=400, detail="role must be 'previous' or 'prior'")
-    raw = (await file.read()).decode("utf-8-sig")
+    raw = file.file.read().decode("utf-8-sig")
     picks = draft_csv.parse_draft_csv(raw)
     if not picks:
         raise HTTPException(status_code=400, detail="No picks found in CSV")
@@ -336,7 +335,7 @@ async def upload_draft_csv(
 
 
 @router.post("/draft/{token}/admin/keepers/draft-html")
-async def upload_draft_html(
+def upload_draft_html(
     token: str,
     file: UploadFile = File(...),
     role: str = Form(...),
@@ -346,7 +345,7 @@ async def upload_draft_html(
     if role not in ("previous", "prior"):
         raise HTTPException(status_code=400, detail="role must be 'previous' or 'prior'")
     try:
-        raw = (await file.read()).decode("utf-8-sig")
+        raw = file.file.read().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=400, detail="Draft HTML must be UTF-8 text") from exc
     try:
@@ -422,7 +421,7 @@ def use_completed_draft(
 
 
 @router.post("/draft/{token}/admin/keepers/rosters-csv")
-async def upload_rosters_csv(
+def upload_rosters_csv(
     token: str,
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
@@ -438,7 +437,7 @@ async def upload_rosters_csv(
         if not stem:
             continue
         rows = draft_csv.parse_roster_csv(
-            (await file.read()).decode("utf-8-sig")
+            file.file.read().decode("utf-8-sig")
         )
         if not rows:
             errors.append(f"{stem}: no players found")
@@ -458,7 +457,7 @@ async def upload_rosters_csv(
 
 
 @router.post("/draft/{token}/admin/keepers/rosters-html")
-async def upload_rosters_html(
+def upload_rosters_html(
     token: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -466,7 +465,7 @@ async def upload_rosters_html(
     """Load every team from a saved Yahoo Starting Rosters HTML page."""
     league = _get_league(db, token)
     try:
-        raw = (await file.read()).decode("utf-8-sig")
+        raw = file.file.read().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise HTTPException(status_code=400, detail="Roster HTML must be UTF-8 text") from exc
     try:
@@ -492,14 +491,14 @@ async def upload_rosters_html(
 
 
 @router.post("/draft/{token}/admin/keepers/transactions-html")
-async def upload_transactions_html(
+def upload_transactions_html(
     token: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     league = _get_league(db, token)
     try:
-        raw = (await file.read()).decode("utf-8-sig")
+        raw = file.file.read().decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise HTTPException(
             status_code=400, detail="Transaction HTML must be UTF-8 text"
@@ -784,7 +783,7 @@ def _fetch_teams_for_config(db: Session, config: YahooConfig) -> list[str]:
 
 
 @router.post("/draft/{token}/admin/keepers/yahoo-config")
-async def save_yahoo_config(
+def save_yahoo_config(
     token: str, body: YahooConfigIn, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -814,7 +813,7 @@ async def save_yahoo_config(
     token_json = config.access_token_json or {}
     if token_json.get("access_token") and config.league_id_external and config.consumer_key and config.consumer_secret:
         try:
-            fetched_teams = await asyncio.to_thread(_fetch_teams_for_config, db, config)
+            fetched_teams = _fetch_teams_for_config(db, config)
             ws = _get_workspace(league)
             ws["yahoo_teams"] = fetched_teams
             _save_workspace(db, league, ws)
@@ -844,7 +843,7 @@ def yahoo_authorize(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/draft/{token}/admin/keepers/yahoo/callback")
-async def yahoo_callback(
+def yahoo_callback(
     token: str, body: YahooCodeIn, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -870,7 +869,7 @@ async def yahoo_callback(
     warning: str | None = None
     if config.league_id_external:
         try:
-            fetched_teams = await asyncio.to_thread(_fetch_teams_for_config, db, config)
+            fetched_teams = _fetch_teams_for_config(db, config)
             ws = _get_workspace(league)
             ws["yahoo_teams"] = fetched_teams
             _save_workspace(db, league, ws)
@@ -888,7 +887,7 @@ async def yahoo_callback(
 
 
 @router.post("/draft/{token}/admin/keepers/fetch")
-async def fetch_yahoo(token: str, db: Session = Depends(get_db)):
+def fetch_yahoo(token: str, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     config = _get_yahoo_config(db, league)
     if config is None or not config.league_id_external:
@@ -899,8 +898,8 @@ async def fetch_yahoo(token: str, db: Session = Depends(get_db)):
     token_json = _ensure_token(db, config)
     game_id = config.game_id or 449
 
-    def _fetch() -> dict:
-        return yahoo_mod.fetch_snapshot(
+    try:
+        rosters = yahoo_mod.fetch_snapshot(
             league_id=config.league_id_external,
             game_code=config.game_code or "nfl",
             game_id=game_id,
@@ -909,9 +908,6 @@ async def fetch_yahoo(token: str, db: Session = Depends(get_db)):
             token_json=token_json,
             week=config.week,
         )
-
-    try:
-        rosters = await asyncio.to_thread(_fetch)
     except YahooError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -937,7 +933,7 @@ async def fetch_yahoo(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/draft/{token}/admin/keepers/yahoo/teams")
-async def yahoo_teams(token: str, db: Session = Depends(get_db)):
+def yahoo_teams(token: str, db: Session = Depends(get_db)):
     """Test the Yahoo config/token and store the league team names.
 
     Lets the commissioner map Yahoo teams to draft teams before any roster
@@ -952,7 +948,7 @@ async def yahoo_teams(token: str, db: Session = Depends(get_db)):
             detail="Set the Yahoo league ID first",
         )
     try:
-        names = await asyncio.to_thread(_fetch_teams_for_config, db, config)
+        names = _fetch_teams_for_config(db, config)
     except YahooError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:

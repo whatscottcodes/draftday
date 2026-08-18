@@ -1,9 +1,11 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from . import loop
 from .api.keeper_admin import router as keeper_admin_router
 from .api.routes import router
 from .database import SessionLocal, init_db
@@ -11,6 +13,7 @@ from .database import SessionLocal, init_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    loop.main_loop = asyncio.get_running_loop()
     init_db()
     yield
 

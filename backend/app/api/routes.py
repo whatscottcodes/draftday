@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import re
@@ -25,6 +26,7 @@ from ..draft.keepers import (
     import_candidate_rows,
     parse_candidate_csv,
 )
+from ..loop import main_loop
 from ..models import (
     DEFAULT_ROSTER_SLOTS,
     DraftEvent,
@@ -103,7 +105,7 @@ def list_leagues(db: Session = Depends(get_db)):
 
 
 @router.delete("/draft/{token}/admin/delete")
-async def delete_league(
+def delete_league(
     token: str, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -288,7 +290,7 @@ def admin_config(token: str, db: Session = Depends(get_db)):
 
 
 @router.put("/draft/{token}/admin/slots/{slot_id}")
-async def update_slot(
+def update_slot(
     token: str, slot_id: int, body: SlotUpdate, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -297,12 +299,12 @@ async def update_slot(
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True}
 
 
 @router.put("/draft/{token}/admin/roster")
-async def update_roster(
+def update_roster(
     token: str, body: RosterUpdate, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -316,24 +318,24 @@ async def update_roster(
         raise HTTPException(status_code=400, detail="Provide between 1 and 30 slots")
     league.roster_slots = slots
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "roster_slots": slots}
 
 
 @router.post("/draft/{token}/admin/keepers")
-async def create_keeper(token: str, body: KeeperIn, db: Session = Depends(get_db)):
+def create_keeper(token: str, body: KeeperIn, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     try:
         engine.add_keeper(db, league, body.team_id, body.player_id, body.round)
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True}
 
 
 @router.delete("/draft/{token}/admin/keepers/candidates")
-async def clear_keeper_candidates(token: str, db: Session = Depends(get_db)):
+def clear_keeper_candidates(token: str, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     if league.status not in (LeagueStatus.SETUP, LeagueStatus.READY):
         raise HTTPException(
@@ -342,24 +344,24 @@ async def clear_keeper_candidates(token: str, db: Session = Depends(get_db)):
         )
     count = clear_candidates(db, league)
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "cleared": count}
 
 
 @router.delete("/draft/{token}/admin/keepers/{keeper_id}")
-async def delete_keeper(token: str, keeper_id: int, db: Session = Depends(get_db)):
+def delete_keeper(token: str, keeper_id: int, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     try:
         engine.remove_keeper(db, league, keeper_id)
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True}
 
 
 @router.post("/draft/{token}/admin/import/keepers")
-async def import_keepers(
+def import_keepers(
     token: str, files: list[UploadFile] = File(...), db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -371,7 +373,7 @@ async def import_keepers(
     rows: list[dict] = []
     warnings: list[str] = []
     for file in files:
-        raw = (await file.read()).decode("utf-8-sig")
+        raw = file.file.read().decode("utf-8-sig")
         stem = (file.filename or "").rsplit(".", 1)[0].strip()
         file_rows, file_warnings = parse_candidate_csv(raw, stem)
         rows.extend(file_rows)
@@ -380,12 +382,12 @@ async def import_keepers(
         raise HTTPException(status_code=400, detail="No keeper candidates found")
     stats = import_candidate_rows(db, league, rows, source="import")
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "stats": stats, "warnings": warnings}
 
 
 @router.post("/draft/{token}/admin/import/json")
-async def import_players_json(
+def import_players_json(
     token: str, body: PlayerImport, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -394,30 +396,30 @@ async def import_players_json(
     for row in body.players:
         _upsert_player(db, league, row)
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "imported": len(body.players)}
 
 
 @router.post("/draft/{token}/admin/import/csv")
-async def import_players_csv(
+def import_players_csv(
     token: str, file: UploadFile = File(...), db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
     if league.status != LeagueStatus.SETUP:
         raise HTTPException(status_code=400, detail="Players can only be imported during setup")
-    raw = (await file.read()).decode("utf-8-sig")
+    raw = file.file.read().decode("utf-8-sig")
     rows = parse_players_csv(raw)
     if not rows:
         raise HTTPException(status_code=400, detail="Empty CSV file")
     for row in rows:
         _upsert_player(db, league, row)
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "imported": len(rows)}
 
 
 @router.post("/draft/{token}/admin/import/text")
-async def import_players_text(
+def import_players_text(
     token: str, body: CsvTextIn, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -429,7 +431,7 @@ async def import_players_text(
     for row in rows:
         _upsert_player(db, league, row)
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "imported": len(rows)}
 
 
@@ -607,31 +609,31 @@ def validate_league(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/draft/{token}/admin/start")
-async def start_league(token: str, db: Session = Depends(get_db)):
+def start_league(token: str, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     try:
         validation.start_draft(db, league)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "status": league.status}
 
 
 @router.post("/draft/{token}/admin/reopen")
-async def reopen_league(token: str, db: Session = Depends(get_db)):
+def reopen_league(token: str, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     try:
         validation.reopen_draft(db, league)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "status": league.status}
 
 
 @router.post("/draft/{token}/admin/picks")
-async def admin_pick(token: str, body: PickIn, db: Session = Depends(get_db)):
+def admin_pick(token: str, body: PickIn, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     current = engine.current_slot(db, league)
     slot_id = body.slot_id or (current.id if current else None)
@@ -656,19 +658,19 @@ async def admin_pick(token: str, body: PickIn, db: Session = Depends(get_db)):
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "status": league.status}
 
 
 @router.post("/draft/{token}/admin/undo")
-async def admin_undo(token: str, db: Session = Depends(get_db)):
+def admin_undo(token: str, db: Session = Depends(get_db)):
     league = _get_league(db, token)
     try:
         engine.undo_last_pick(db, league)
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "status": league.status}
 
 
@@ -722,7 +724,7 @@ def team_rosters(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/draft/{token}/team/{team_token}/picks")
-async def team_pick(
+def team_pick(
     token: str, team_token: str, body: TeamPickIn, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -739,12 +741,12 @@ async def team_pick(
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True, "status": league.status}
 
 
 @router.post("/draft/{token}/team/{team_token}/keepers")
-async def team_create_keeper(
+def team_create_keeper(
     token: str, team_token: str, body: KeeperPickIn, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -754,12 +756,12 @@ async def team_create_keeper(
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True}
 
 
 @router.delete("/draft/{token}/team/{team_token}/keepers/{keeper_id}")
-async def team_delete_keeper(
+def team_delete_keeper(
     token: str, team_token: str, keeper_id: int, db: Session = Depends(get_db)
 ):
     league = _get_league(db, token)
@@ -772,24 +774,44 @@ async def team_delete_keeper(
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)
-    await _broadcast(league)
+    _schedule_broadcast(league)
     return {"ok": True}
 
 
 # ---------------------------------------------------------------- websocket
 
 
+def _build_state(league: League) -> dict:
+    from ..database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return state_builder.build_draft_state(db, league)
+    finally:
+        db.close()
+
+
+async def _broadcast(league: League) -> None:
+    data = await asyncio.to_thread(_build_state, league)
+    await manager.broadcast(league.id, {"type": "state", "data": data})
+
+
+def _schedule_broadcast(league: League) -> None:
+    loop = main_loop
+    if loop is not None and not loop.is_closed():
+        asyncio.run_coroutine_threadsafe(_broadcast(league), loop)
+
+
 @router.websocket("/draft/{token}/ws")
 async def draft_ws(token: str, websocket: WebSocket, db: Session = Depends(get_db)):
-    league = engine.get_league_by_token(db, token)
+    league = await asyncio.to_thread(engine.get_league_by_token, db, token)
     if league is None:
         await websocket.close(code=4404)
         return
     await manager.connect(league.id, websocket)
     try:
-        await websocket.send_json(
-            {"type": "state", "data": state_builder.build_draft_state(db, league)}
-        )
+        state = await asyncio.to_thread(state_builder.build_draft_state, db, league)
+        await websocket.send_json({"type": "state", "data": state})
     finally:
         # The receive loop below lives for the whole connection; end the
         # read transaction now so the pooled connection is released instead
@@ -802,14 +824,3 @@ async def draft_ws(token: str, websocket: WebSocket, db: Session = Depends(get_d
         pass
     finally:
         manager.disconnect(league.id, websocket)
-
-
-async def _broadcast(league: League) -> None:
-    from ..database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        data = state_builder.build_draft_state(db, league)
-    finally:
-        db.close()
-    await manager.broadcast(league.id, {"type": "state", "data": data})
