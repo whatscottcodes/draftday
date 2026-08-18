@@ -3,33 +3,241 @@
 @tailwind utilities;
 
 :root {
-  --background: #020617;
-  --foreground: #e2e8f0;
+  --background: #060614;
+  --foreground: #f1f5f9;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--background);
+  background-image: url("/assets/backgrounds/carbon.svg");
+  background-repeat: repeat;
+  font-family: Verdana, Tahoma, "Segoe UI", Arial, sans-serif;
+  image-rendering: pixelated;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-top: 2px solid #64748b;
+  border-left: 2px solid #64748b;
+  border-bottom: 2px solid #000000;
+  border-r: 2px solid #000000;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
 @layer components {
+  /* Web 1.0 Form Inputs */
   .input {
-    @apply w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500;
+    @apply w-full rounded-none border-2 border-t-black border-l-black border-b-slate-600 border-r-slate-600 bg-slate-900 px-2.5 py-1.5 text-sm text-slate-100 font-sans focus:outline-none focus:border-cyan-400;
+    box-shadow: inset 1px 1px 2px rgba(0, 0, 0, 0.8);
   }
+
+  /* Web 1.0 Beveled Buttons */
   .btn {
-    @apply rounded-lg px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+    @apply rounded-none px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-none disabled:opacity-40 disabled:cursor-not-allowed select-none cursor-pointer;
+    border-top: 2px solid rgba(255, 255, 255, 0.6);
+    border-left: 2px solid rgba(255, 255, 255, 0.6);
+    border-bottom: 2px solid #000000;
+    border-right: 2px solid #000000;
+    box-shadow: 1px 1px 0px #000000;
   }
+  .btn:active:not(:disabled) {
+    border-top: 2px solid #000000;
+    border-left: 2px solid #000000;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.6);
+    border-right: 2px solid rgba(255, 255, 255, 0.6);
+    transform: translate(1px, 1px);
+    box-shadow: none;
+  }
+
   .btn-primary {
-    @apply btn bg-emerald-500 text-slate-950 hover:bg-emerald-400;
+    @apply btn bg-emerald-700 text-emerald-100 hover:bg-emerald-600 active:bg-emerald-800;
   }
   .btn-secondary {
-    @apply btn bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700;
+    @apply btn bg-slate-800 text-slate-100 hover:bg-slate-700 active:bg-slate-900;
   }
   .btn-danger {
-    @apply btn bg-red-600/80 text-white hover:bg-red-600;
+    @apply btn bg-red-800 text-white hover:bg-red-700 active:bg-red-900;
   }
+  .btn-gold {
+    @apply btn bg-amber-600 text-amber-950 font-black hover:bg-amber-500 active:bg-amber-700;
+  }
+  .btn-blue {
+    @apply btn bg-blue-800 text-blue-100 hover:bg-blue-700 active:bg-blue-900;
+  }
+
+  /* Web 1.0 Flat Rectangular Badge */
   .badge {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold;
+    @apply inline-flex items-center rounded-none px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider border;
   }
+
+  /* Retro Panel Box */
+  .retro-panel {
+    @apply rounded-none bg-slate-900/90 text-slate-100 border-2 border-t-slate-500 border-l-slate-500 border-b-black border-r-black;
+    box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.8);
+  }
+
+  /* Retro Window / Title Bar */
+  .retro-titlebar {
+    @apply px-3 py-1 font-bold text-xs uppercase tracking-wider flex items-center justify-between;
+    background: linear-gradient(90deg, #000080 0%, #004080 60%, #008080 100%);
+    color: #ffffff;
+    border-bottom: 2px solid #000000;
+    text-shadow: 1px 1px 1px #000000;
+  }
+
+  .retro-titlebar-gold {
+    @apply px-3 py-1 font-bold text-xs uppercase tracking-wider flex items-center justify-between;
+    background: linear-gradient(90deg, #713f12 0%, #a16207 60%, #ca8a04 100%);
+    color: #fef08a;
+    border-bottom: 2px solid #000000;
+    text-shadow: 1px 1px 1px #000000;
+  }
+
+  .retro-titlebar-red {
+    @apply px-3 py-1 font-bold text-xs uppercase tracking-wider flex items-center justify-between;
+    background: linear-gradient(90deg, #7f1d1d 0%, #991b1b 60%, #b91c1c 100%);
+    color: #fee2e2;
+    border-bottom: 2px solid #000000;
+    text-shadow: 1px 1px 1px #000000;
+  }
+
+  /* Retro Divider HR */
+  .retro-hr {
+    @apply my-4 border-0 h-[2px] bg-gradient-to-r from-transparent via-slate-500 to-transparent;
+  }
+}
+
+/* Glitter & Retro Text Effects */
+.glitter-text {
+  background: linear-gradient(
+    90deg,
+    #ffd700 0%,
+    #ffffff 25%,
+    #facc15 50%,
+    #f59e0b 75%,
+    #ffd700 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glitter 3s linear infinite;
+  display: inline-block;
+  font-weight: 900;
+  text-shadow: 0 0 8px rgba(250, 204, 21, 0.4);
+}
+
+.glitter-blue {
+  background: linear-gradient(
+    90deg,
+    #38bdf8 0%,
+    #ffffff 25%,
+    #60a5fa 50%,
+    #818cf8 75%,
+    #38bdf8 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glitter 3s linear infinite;
+  display: inline-block;
+  font-weight: 900;
+  text-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+.glitter-green {
+  background: linear-gradient(
+    90deg,
+    #4ade80 0%,
+    #ffffff 25%,
+    #22c55e 50%,
+    #86efac 75%,
+    #4ade80 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glitter 3s linear infinite;
+  display: inline-block;
+  font-weight: 900;
+  text-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+}
+
+.glitter-rainbow {
+  background: linear-gradient(
+    90deg,
+    #ef4444 0%,
+    #f97316 16%,
+    #eab308 33%,
+    #22c55e 50%,
+    #06b6d4 66%,
+    #a855f7 83%,
+    #ef4444 100%
+  );
+  background-size: 300% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glitter 4s linear infinite;
+  display: inline-block;
+  font-weight: 900;
+}
+
+/* Retro Marquee Box */
+.retro-marquee-container {
+  overflow: hidden;
+  white-space: nowrap;
+  background: #000000;
+  border-top: 2px solid #eab308;
+  border-bottom: 2px solid #eab308;
+  color: #fde047;
+  padding: 4px 0;
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  font-weight: bold;
+}
+.retro-marquee-content {
+  display: inline-block;
+  animation: marquee 25s linear infinite;
+}
+
+/* Retro Table Grid */
+.retro-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.retro-table th,
+.retro-table td {
+  border: 1px solid #334155;
+}
+.retro-table th {
+  background: #1e293b;
+  color: #93c5fd;
+  font-weight: bold;
+  text-align: left;
+  padding: 4px 8px;
+}
+.retro-table td {
+  padding: 4px 8px;
+}
+
+/* 90s Web Badges Container */
+.webring-footer {
+  background: #0a0f1d;
+  border: 2px ridge #3b82f6;
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 24px;
 }

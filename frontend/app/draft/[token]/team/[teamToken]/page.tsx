@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { apiJson, apiJsonRetry, connectDraftSocket } from "@/lib/api";
 import type { TeamState } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
+import { getTeamTheme } from "@/lib/theme";
 
 type SortKey = "rank" | "name";
 type Position = "ALL" | "QB" | "RB" | "WR" | "TE" | "K" | "DST";
@@ -14,7 +15,7 @@ function rosterText(roster?: Record<string, number>): string {
   if (!roster) return "";
   return POSITION_ORDER.filter((p) => (roster[p] ?? 0) > 0)
     .map((p) => `${p}:${roster[p]}`)
-    .join("|");
+    .join(" | ");
 }
 
 export default function TeamPage({
@@ -73,7 +74,7 @@ export default function TeamPage({
       clearInterval(retry);
       ws?.close();
     };
-  }, [fetchTeam, token]);
+  }, [fetchTeam, token, teamToken]);
 
   const filtered = useMemo(() => {
     if (!state) return [];
@@ -146,393 +147,540 @@ export default function TeamPage({
 
   if (error && !state) {
     return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 p-4">
-        <p className="text-red-400">{error}</p>
-      </main>
-    );
-  }
-  if (!state) {
-    return (
-      <main className="min-h-screen bg-slate-950 text-slate-100 p-4">
-        <p className="text-slate-400">Loading…</p>
+      <main className="min-h-screen text-slate-100 flex items-center justify-center p-4">
+        <div className="retro-panel p-5 border-2 border-red-500 bg-red-950/90 max-w-sm text-center space-y-3">
+          <div className="text-2xl">⚠️</div>
+          <div className="font-bold text-sm text-red-200 uppercase">
+            Connection Error
+          </div>
+          <p className="text-xs text-red-300 font-mono">{error}</p>
+          <button
+            onClick={() => fetchTeam()}
+            className="btn btn-secondary text-xs"
+          >
+            Retry
+          </button>
+        </div>
       </main>
     );
   }
 
+  if (!state) {
+    return (
+      <main className="min-h-screen text-slate-100 flex items-center justify-center p-4">
+        <div className="retro-panel p-5 border-2 border-slate-500 bg-slate-900 max-w-xs text-center space-y-2">
+          <div className="text-2xl animate-spin">🏈</div>
+          <div className="font-bold text-xs uppercase text-yellow-300">
+            LOADING TEAM DRAFT ROOM…
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const theme = getTeamTheme(state.draft_position || 1);
   const current = state.current_slot;
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 max-w-md mx-auto">
-      {/* On-the-clock banner */}
-      <header
-        className={`px-4 py-3 border-b border-slate-800 ${
-          state.on_the_clock ? "bg-emerald-900/40" : "bg-slate-900"
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="font-black text-lg">{state.team_name}</h1>
-            <p className="text-xs text-slate-400">
-              {state.league_name} · {state.status}
-              {!connected && " · reconnecting…"}
-            </p>
+    <main
+      className="min-h-screen text-slate-100 p-2 sm:p-4"
+      style={{
+        backgroundImage: `url(${theme.bgUrl})`,
+        backgroundColor: theme.bgColor,
+        backgroundRepeat: "repeat",
+      }}
+    >
+      <div className="max-w-lg mx-auto space-y-3">
+        {/* Team Room Header Window */}
+        <header
+          className="retro-panel p-0 shadow-[4px_4px_0px_#000000]"
+          style={{ border: theme.cardBorder }}
+        >
+          <div
+            className="retro-titlebar"
+            style={{
+              background: theme.headerGradient,
+              color: theme.headerTextColor,
+            }}
+          >
+            <div className="flex items-center gap-1.5 font-black truncate">
+              <span>{theme.icon}</span>
+              <span className="truncate">{state.team_name}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span
+                className={`text-[9px] font-mono px-1 py-0.5 border ${
+                  connected
+                    ? "bg-emerald-950 text-emerald-300 border-emerald-400"
+                    : "bg-red-950 text-red-300 border-red-400 animate-pulse"
+                }`}
+              >
+                {connected ? "LIVE" : "SYNCING"}
+              </span>
+            </div>
           </div>
-          {state.on_the_clock && (
-            <div className="text-right">
-              <div className="text-3xl font-black text-emerald-400 animate-pulse">
-                ON THE CLOCK
+
+          <div
+            className="p-3.5 space-y-2"
+            style={{ backgroundColor: theme.cardBg }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-black font-heading tracking-tight text-white flex items-center gap-2">
+                  <span>{theme.icon}</span>
+                  <span>{state.team_name}</span>
+                </h1>
+                <p className="text-xs font-mono" style={{ color: theme.mutedTextColor }}>
+                  {state.league_name} • STATUS: [{state.status}]
+                </p>
               </div>
-              <div className="text-xs text-slate-300">
-                Pick {current?.pick_number} · Round {current?.round}
+              <div className="text-right">
+                <span className="text-[10px] font-mono uppercase text-yellow-300 border border-yellow-400/60 bg-black/60 px-1.5 py-0.5">
+                  THEME: {theme.name}
+                </span>
               </div>
             </div>
-          )}
-        </div>
-        <div className="flex gap-3 text-xs text-slate-400 mt-2">
-          <a
-            href={`/draft/${token}/display`}
-            className="hover:text-emerald-400"
-          >
-            ← TV board
-          </a>
-          <a
-            href={`/draft/${token}/rosters`}
-            className="hover:text-emerald-400"
-          >
-            All rosters
-          </a>
-        </div>
-      </header>
 
-      {state.status === "COMPLETED" && (
-        <div className="px-4 py-2 bg-amber-900/30 text-amber-300 text-sm font-semibold">
-          Draft complete
-        </div>
-      )}
-
-      {notice && (
-        <div className="px-4 py-2 bg-red-900/40 text-red-300 text-sm">{notice}</div>
-      )}
-
-      {/* Keepers (pre-draft) */}
-      {(state.status === "SETUP" || state.status === "READY") && (
-        <section className="px-4 py-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs uppercase tracking-widest text-slate-500">
-              Keepers ({state.keeper_count}/{state.max_keepers})
-            </h2>
-            <span className="text-[11px] text-slate-600">
-              Selections lock when the draft starts
-            </span>
-          </div>
-          {state.keeper_candidates.length === 0 && state.keeper_count === 0 ? (
-            <p className="text-sm text-slate-500">
-              No keeper candidates yet.
-            </p>
-          ) : (
-            <ul className="space-y-1.5">
-              {state.keeper_candidates.map((k) => (
-                <li
-                  key={k.candidate_id}
-                  className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"
-                >
-                  <span className="w-9 text-right text-xs font-semibold text-amber-400/80">
-                    R{k.cost_round}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold truncate">
-                      {k.player_name}
-                      {k.selected && (
-                        <span className="ml-1 text-amber-400">★</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-slate-500">
-                      <PositionBadge position={k.position} size="xs" />
-                      <span className="truncate">
-                        {k.nfl_team ? ` · ${k.nfl_team}` : ""} ·{" "}
-                        {k.years_kept === 1
-                          ? "Last keepable year"
-                          : `Keepable until ${k.keepable_until_year}`}
-                      </span>
-                    </div>
-                  </div>
-                  {k.selected ? (
-                    <button
-                      className="btn-secondary text-xs"
-                      disabled={picking === k.player_id}
-                      onClick={() => removeKeeper(k.player_id)}
-                    >
-                      {picking === k.player_id ? "…" : "Remove"}
-                    </button>
-                  ) : (
-                    <button
-                      className="btn-primary text-xs"
-                      disabled={
-                        picking === k.player_id ||
-                        state.keeper_count >= state.max_keepers
-                      }
-                      onClick={() => selectKeeper(k.player_id)}
-                    >
-                      {picking === k.player_id ? "…" : "Keep"}
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-
-      {/* Last 3 picks */}
-      {state.recent_picks.length > 0 && (
-        <section className="px-4 py-3">
-          <h2 className="text-xs uppercase tracking-widest text-slate-500 mb-2">
-            Last picks
-          </h2>
-          <div className="flex flex-wrap gap-1.5">
-            {state.recent_picks.slice(0, 3).map((p) => (
-              <span
-                key={p.id}
-                className="badge bg-slate-800 text-slate-200 border border-slate-700 gap-1.5"
+            {/* Top Quick Links */}
+            <div className="flex gap-2 text-xs pt-1 border-t border-slate-800">
+              <a
+                href={`/draft/${token}/display`}
+                className="btn btn-secondary text-[10px] py-1 inline-flex items-center gap-1"
               >
-                <span className="text-slate-500">#{p.pick_number}</span>
-                <span className="font-semibold">{p.player_name}</span>
-                <PositionBadge position={p.position} size="xs" />
-                <span className="text-slate-500">{p.team_name}</span>
+                📺 TV Board
+              </a>
+              <a
+                href={`/draft/${token}/rosters`}
+                className="btn btn-secondary text-[10px] py-1 inline-flex items-center gap-1"
+              >
+                📋 All Rosters
+              </a>
+            </div>
+          </div>
+        </header>
+
+        {/* Dramatic ON THE CLOCK Banner */}
+        {state.on_the_clock && state.status === "LIVE" && (
+          <div
+            className="border-4 p-3 text-center shadow-[4px_4px_0px_#000000] animate-pulse"
+            style={{
+              background: theme.clockBannerBg,
+              borderColor: theme.accentColor,
+              color: theme.clockBannerTextColor,
+            }}
+          >
+            <div className="text-xs uppercase font-mono tracking-widest font-black">
+              ★★★ YOUR TEAM IS ON THE CLOCK! ★★★
+            </div>
+            <div className="text-3xl font-black font-heading tracking-tight mt-0.5">
+              MAKE YOUR SELECTION
+            </div>
+            <div className="text-xs font-mono font-bold mt-1 opacity-90">
+              ROUND {current?.round} • OVERALL PICK #{current?.pick_number}
+            </div>
+          </div>
+        )}
+
+        {state.status === "COMPLETED" && (
+          <div className="retro-panel p-2.5 bg-amber-950 border-2 border-amber-400 text-yellow-300 text-xs font-bold text-center font-mono">
+            🏆 DRAFT COMPLETED — FINAL ROSTERS LOCKED 🏆
+          </div>
+        )}
+
+        {notice && (
+          <div className="retro-panel p-2 bg-red-950 border-2 border-red-500 text-red-200 text-xs font-mono font-bold flex items-center gap-2">
+            <span>⚠️</span>
+            <span>{notice}</span>
+          </div>
+        )}
+
+        {/* Keepers Section (Pre-Draft) */}
+        {(state.status === "SETUP" || state.status === "READY") && (
+          <section
+            className="retro-panel p-0 shadow-[3px_3px_0px_#000000]"
+            style={{ border: theme.cardBorder }}
+          >
+            <div className="retro-titlebar-gold">
+              <span>
+                ★ KEEPER SELECTION ({state.keeper_count}/{state.max_keepers})
               </span>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Next 3 picks */}
-      {state.next_picks.length > 0 && (
-        <section className="px-4 py-3">
-          <h2 className="text-xs uppercase tracking-widest text-slate-500 mb-2">
-            Up next
-          </h2>
-          <div className="flex flex-wrap gap-1.5">
-            {state.next_picks.map((s) => (
-              <span
-                key={s.pick_number}
-                className="badge border border-slate-700 bg-slate-900 text-slate-300 flex-col items-start gap-0.5 rounded-lg"
-              >
-                <span className="flex gap-1.5">
-                  <span className="text-slate-500">#{s.pick_number}</span>
-                  <span className="font-semibold">{s.drafting_team_name}</span>
-                  <span className="text-slate-500">R{s.round}</span>
-                </span>
-                <span className="text-[10px] text-slate-500">
-                  {rosterText(s.roster) || "No players"}
-                </span>
-              </span>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Roster / Available tabs */}
-      <div className="sticky top-0 z-10 flex border-b border-slate-800 bg-slate-950">
-        {(["roster", "available"] as const).map((v) => (
-          <button
-            key={v}
-            className={`flex-1 py-2.5 text-sm font-semibold uppercase tracking-widest ${
-              view === v
-                ? "text-emerald-400 border-b-2 border-emerald-400"
-                : "text-slate-500 hover:text-slate-300"
-            }`}
-            onClick={() => setView(v)}
-          >
-            {v === "roster" ? "My Roster" : "Available"}
-          </button>
-        ))}
-      </div>
-
-      {view === "roster" && (
-        <section className="px-4 py-3 space-y-3">
-          <h2 className="text-xs uppercase tracking-widest text-slate-500">
-            Starters
-          </h2>
-          {state.roster_by_slot.length === 0 && state.keepers.length === 0 && (
-            <p className="text-sm text-slate-500">No players yet.</p>
-          )}
-          <div className="space-y-1.5">
-            {state.roster_by_slot.map((r) => (
-              <div
-                key={r.slot}
-                className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"
-              >
-                <span className="w-12 text-xs font-semibold text-slate-400">
-                  {r.slot}
-                </span>
-                <PositionBadge position={r.position} size="xs" />
-                {r.player ? (
-                  <span className="flex-1 font-semibold truncate">
-                    {r.player.player_name}
-                    <span className="text-xs text-slate-500 ml-1">
-                      {r.player.nfl_team ? ` · ${r.player.nfl_team}` : ""} · R
-                      {r.player.round}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="flex-1 text-sm text-slate-600">Empty</span>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {state.bench.length > 0 && (
-            <>
-              <h2 className="text-xs uppercase tracking-widest text-slate-500">
-                Bench ({state.bench.length})
-              </h2>
-              <div className="flex flex-wrap gap-1.5">
-                {state.bench.map((p) => (
-                  <span
-                    key={p.player_id}
-                    className="badge bg-slate-800 text-slate-200 border border-slate-700"
-                  >
-                    {p.player_name}{" "}
-                    <PositionBadge position={p.position} size="xs" />{" "}
-                    <span className="text-slate-500">R{p.round}</span>
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
-
-          {state.keepers.filter(
-            (k) => !state.roster.some((r) => r.player_id === k.player_id),
-          ).length > 0 && (
-            <>
-              <h2 className="text-xs uppercase tracking-widest text-slate-500">
-                Keepers
-              </h2>
-              <div className="flex flex-wrap gap-1.5">
-                {state.keepers
-                  .filter(
-                    (k) => !state.roster.some((r) => r.player_id === k.player_id),
-                  )
-                  .map((k) => (
-                    <span
-                      key={k.keeper_id}
-                      className="badge bg-amber-900/40 text-amber-200 border border-amber-700"
+              <span className="text-[10px] font-mono">LOCKS AT DRAFT START</span>
+            </div>
+            <div
+              className="p-3 space-y-2"
+              style={{ backgroundColor: theme.cardBg }}
+            >
+              {state.keeper_candidates.length === 0 && state.keeper_count === 0 ? (
+                <p className="text-xs text-slate-400 font-mono py-2 text-center">
+                  No keeper candidates imported yet.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {state.keeper_candidates.map((k) => (
+                    <div
+                      key={k.candidate_id}
+                      className="border border-slate-700 bg-black/60 p-2 flex items-center justify-between gap-2 text-xs"
                     >
-                      {k.player_name}{" "}
-                      <span className="text-amber-300/70">K·R{k.round}</span>
-                    </span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono font-black text-yellow-400 w-8 text-center bg-slate-900 border border-slate-700 py-0.5">
+                          R{k.cost_round}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="font-bold truncate flex items-center gap-1">
+                            <span>{k.player_name}</span>
+                            {k.selected && (
+                              <span className="text-yellow-400 font-black">
+                                ★
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono">
+                            <PositionBadge position={k.position} size="xs" />
+                            <span>
+                              {k.nfl_team ? `· ${k.nfl_team}` : ""} ·{" "}
+                              {k.years_kept === 1
+                                ? "Last year"
+                                : `Until ${k.keepable_until_year}`}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        {k.selected ? (
+                          <button
+                            className="btn btn-danger text-[10px] py-1"
+                            disabled={picking === k.player_id}
+                            onClick={() => removeKeeper(k.player_id)}
+                          >
+                            {picking === k.player_id ? "…" : "Remove"}
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-gold text-[10px] py-1"
+                            disabled={
+                              picking === k.player_id ||
+                              state.keeper_count >= state.max_keepers
+                            }
+                            onClick={() => selectKeeper(k.player_id)}
+                          >
+                            {picking === k.player_id ? "…" : "Keep"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   ))}
-              </div>
-            </>
-          )}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
-          {state.my_next_slot && (
-            <p className="text-sm text-slate-400">
-              Next pick:{" "}
-              <span className="text-slate-200">
-                Round {state.my_next_slot.round} · Pick{" "}
-                {state.my_next_slot.pick_number}
+        {/* Up Next / Next Pick Info */}
+        {state.next_picks.length > 0 && (
+          <section
+            className="retro-panel p-0 shadow-[2px_2px_0px_#000000]"
+            style={{ border: theme.cardBorder }}
+          >
+            <div className="retro-titlebar">
+              <span>⏳ UP NEXT ON THE CLOCK</span>
+              <span className="text-[10px] font-mono text-cyan-300">
+                UPCOMING PICKS
               </span>
-            </p>
-          )}
-        </section>
-      )}
-
-      {view === "available" && (
-        <section className="px-4 py-3 space-y-3">
-          <h2 className="text-xs uppercase tracking-widest text-slate-500">
-            Available players ({state.available_count})
-          </h2>
-          <div className="flex gap-2">
-            <input
-              className="input"
-              placeholder="Search players…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <select
-              className="input w-24"
-              value={position}
-              onChange={(e) => setPosition(e.target.value as Position)}
+            </div>
+            <div
+              className="p-2.5 flex flex-wrap gap-2"
+              style={{ backgroundColor: theme.cardBg }}
             >
-              {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-            <select
-              className="input w-24"
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-            >
-              <option value="rank">Rank</option>
-              <option value="name">Name</option>
-            </select>
-          </div>
-
-          <ul className="space-y-1.5">
-            {filtered.map((p) => (
-              <li
-                key={p.player_id}
-                className="flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-900 px-3 py-2"
-              >
-                <span className="w-8 text-right text-slate-500 text-sm">
-                  {p.rank ?? "—"}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate">{p.name}</div>
-                  <div className="flex items-center gap-1 text-xs text-slate-500">
-                    <PositionBadge position={p.position} size="xs" />
-                    <span>
-                      {p.nfl_team ? ` · ${p.nfl_team}` : ""}
-                      {p.bye_week ? ` · BYE ${p.bye_week}` : ""}
-                      {p.tier ? ` · Tier ${p.tier}` : ""}
-                    </span>
+              {state.next_picks.map((s) => (
+                <div
+                  key={s.pick_number}
+                  className="border border-slate-700 bg-black/60 px-2 py-1 text-xs font-mono flex-1 min-w-32"
+                >
+                  <div className="flex justify-between text-yellow-300 font-bold">
+                    <span>#{s.pick_number}</span>
+                    <span>R{s.round}</span>
+                  </div>
+                  <div className="font-sans font-bold truncate text-white">
+                    {s.drafting_team_name}
+                  </div>
+                  <div className="text-[9px] text-slate-400 truncate">
+                    {rosterText(s.roster) || "No picks"}
                   </div>
                 </div>
-                {state.on_the_clock ? (
-                  <button
-                    className="btn-primary"
-                    disabled={picking === p.player_id}
-                    onClick={() => submitPick(p.player_id)}
-                  >
-                    {picking === p.player_id ? "…" : "Draft"}
-                  </button>
-                ) : (
-                  <span className="text-xs text-slate-600">
-                    {state.status === "LIVE" ? "waiting" : "—"}
-                  </span>
-                )}
-              </li>
-            ))}
-            {filtered.length === 0 && (
-              <li className="text-sm text-slate-500 py-4 text-center">
-                No players match.
-              </li>
-            )}
-          </ul>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        )}
 
-      {/* Recent picks */}
-      {state.recent_picks.length > 0 && (
-        <section className="px-4 py-3">
-          <h2 className="text-xs uppercase tracking-widest text-slate-500 mb-2">
-            Recent picks
-          </h2>
-          <ul className="space-y-1 text-sm">
-            {state.recent_picks.map((p) => (
-              <li key={p.id} className="text-slate-400">
-                <span className="text-slate-600">#{p.pick_number}</span>{" "}
-                <span className="text-slate-100">{p.player_name}</span>{" "}
-                <PositionBadge position={p.position} size="xs" />{" "}
-                <span className="text-slate-500">— {p.team_name}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+        {/* Roster / Available Tabs */}
+        <div className="flex border-2 border-slate-700 bg-black shadow-[2px_2px_0px_#000000]">
+          <button
+            className={`flex-1 py-2 text-xs font-black uppercase tracking-wider font-sans border-r-2 border-slate-700 ${
+              view === "roster"
+                ? "bg-slate-800 text-yellow-300 border-b-2 border-b-yellow-400"
+                : "bg-slate-950 text-slate-400 hover:text-white"
+            }`}
+            onClick={() => setView("roster")}
+          >
+            📋 My Roster
+          </button>
+          <button
+            className={`flex-1 py-2 text-xs font-black uppercase tracking-wider font-sans ${
+              view === "available"
+                ? "bg-slate-800 text-yellow-300 border-b-2 border-b-yellow-400"
+                : "bg-slate-950 text-slate-400 hover:text-white"
+            }`}
+            onClick={() => setView("available")}
+          >
+            🔍 Draft Players ({state.available_count})
+          </button>
+        </div>
+
+        {/* View: Roster */}
+        {view === "roster" && (
+          <section
+            className="retro-panel p-0 shadow-[3px_3px_0px_#000000]"
+            style={{ border: theme.cardBorder }}
+          >
+            <div className="retro-titlebar">
+              <span>🏈 STARTING LINEUP</span>
+              {state.my_next_slot && (
+                <span className="text-[10px] font-mono text-yellow-300">
+                  NEXT PICK: R{state.my_next_slot.round} • #{state.my_next_slot.pick_number}
+                </span>
+              )}
+            </div>
+
+            <div
+              className="p-3 space-y-1.5"
+              style={{ backgroundColor: theme.cardBg }}
+            >
+              {state.roster_by_slot.length === 0 && state.keepers.length === 0 && (
+                <p className="text-xs text-slate-400 font-mono py-2 text-center">
+                  No players drafted yet.
+                </p>
+              )}
+
+              {state.roster_by_slot.map((r, idx) => (
+                <div
+                  key={`${r.slot}-${idx}`}
+                  className="border border-slate-700 bg-black/60 p-1.5 px-2 flex items-center justify-between text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-12 font-mono font-bold text-[11px] text-yellow-300">
+                      {r.slot}
+                    </span>
+                    <PositionBadge position={r.position} size="xs" />
+                    {r.player ? (
+                      <span className="font-bold truncate text-white">
+                        {r.player.player_name}
+                        <span className="text-[10px] text-slate-400 ml-1 font-mono">
+                          {r.player.nfl_team ? `· ${r.player.nfl_team}` : ""} (R{r.player.round})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-slate-600 font-mono text-[11px]">
+                        — EMPTY —
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {/* Bench */}
+              {state.bench.length > 0 && (
+                <div className="pt-2 border-t border-slate-800 space-y-1">
+                  <div className="text-[10px] uppercase font-mono tracking-wider text-slate-400 font-bold">
+                    BENCH ({state.bench.length})
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {state.bench.map((p) => (
+                      <span
+                        key={p.player_id}
+                        className="badge bg-slate-900 border-slate-700 text-slate-200 text-xs py-1"
+                      >
+                        {p.player_name}{" "}
+                        <PositionBadge position={p.position} size="xs" />{" "}
+                        <span className="text-slate-500 font-mono text-[10px]">
+                          R{p.round}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Keepers not yet in live roster */}
+              {state.keepers.filter(
+                (k) => !state.roster.some((r) => r.player_id === k.player_id),
+              ).length > 0 && (
+                <div className="pt-2 border-t border-slate-800 space-y-1">
+                  <div className="text-[10px] uppercase font-mono tracking-wider text-amber-300 font-bold">
+                    CONFIRMED KEEPERS
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {state.keepers
+                      .filter(
+                        (k) => !state.roster.some((r) => r.player_id === k.player_id),
+                      )
+                      .map((k) => (
+                        <span
+                          key={k.keeper_id}
+                          className="badge bg-amber-950/80 border-amber-600 text-amber-200 text-xs py-1"
+                        >
+                          {k.player_name}{" "}
+                          <span className="text-amber-400 font-mono text-[10px]">
+                            ★ R{k.round}
+                          </span>
+                        </span>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* View: Available Players */}
+        {view === "available" && (
+          <section
+            className="retro-panel p-0 shadow-[3px_3px_0px_#000000]"
+            style={{ border: theme.cardBorder }}
+          >
+            <div className="retro-titlebar">
+              <span>🔍 DRAFT POOL ({state.available_count} AVAILABLE)</span>
+              <span className="text-[10px] font-mono text-yellow-300">
+                LIVE DRAFTING
+              </span>
+            </div>
+
+            <div
+              className="p-3 space-y-3"
+              style={{ backgroundColor: theme.cardBg }}
+            >
+              {/* Search & Filter Controls */}
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1"
+                  placeholder="Search player by name…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <select
+                  className="input w-20 font-bold"
+                  value={position}
+                  onChange={(e) => setPosition(e.target.value as Position)}
+                >
+                  {["ALL", "QB", "RB", "WR", "TE", "K", "DST"].map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="input w-24 font-bold"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                >
+                  <option value="rank">By Rank</option>
+                  <option value="name">By Name</option>
+                </select>
+              </div>
+
+              {/* Player List */}
+              <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
+                {filtered.map((p) => (
+                  <div
+                    key={p.player_id}
+                    className="border border-slate-700 bg-black/60 p-2 flex items-center justify-between gap-2 text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-mono text-yellow-400 font-bold w-7 text-right">
+                        {p.rank ?? "—"}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-black text-white truncate text-sm">
+                          {p.name}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono">
+                          <PositionBadge position={p.position} size="xs" />
+                          <span>
+                            {p.nfl_team ? p.nfl_team : ""}
+                            {p.bye_week ? ` · BYE ${p.bye_week}` : ""}
+                            {p.tier ? ` · Tier ${p.tier}` : ""}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      {state.on_the_clock ? (
+                        <button
+                          className="btn btn-gold text-xs py-1 px-3 shadow-[2px_2px_0px_#000000]"
+                          disabled={picking === p.player_id}
+                          onClick={() => submitPick(p.player_id)}
+                        >
+                          {picking === p.player_id ? "DRAFTING…" : "⚡ DRAFT"}
+                        </button>
+                      ) : (
+                        <span className="text-[10px] font-mono text-slate-500 uppercase px-2 py-1 border border-slate-800 bg-black">
+                          {state.status === "LIVE" ? "WAITING" : "LOCKED"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {filtered.length === 0 && (
+                  <div className="text-center py-6 text-slate-400 font-mono text-xs">
+                    No players match your search filter.
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Recent Picks Window */}
+        {state.recent_picks.length > 0 && (
+          <section
+            className="retro-panel p-0 shadow-[2px_2px_0px_#000000]"
+            style={{ border: theme.cardBorder }}
+          >
+            <div className="retro-titlebar">
+              <span>📢 RECENT LEAGUE PICKS</span>
+              <span className="text-[10px] font-mono text-slate-300">
+                LATEST ACTIVITY
+              </span>
+            </div>
+            <div
+              className="p-2.5 divide-y divide-slate-800 text-xs font-mono"
+              style={{ backgroundColor: theme.cardBg }}
+            >
+              {state.recent_picks.map((p) => (
+                <div
+                  key={p.id}
+                  className="py-1.5 flex items-center justify-between gap-2"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="text-yellow-400 font-bold">
+                      #{p.pick_number}
+                    </span>
+                    <span className="font-sans font-bold text-white truncate">
+                      {p.player_name}
+                    </span>
+                    <PositionBadge position={p.position} size="xs" />
+                  </div>
+                  <span className="text-slate-400 text-[11px] truncate">
+                    {p.team_name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
     </main>
   );
 }

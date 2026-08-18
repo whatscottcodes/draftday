@@ -98,6 +98,7 @@ export interface TeamState {
   status: LeagueStatus;
   team_id: number;
   team_name: string;
+  draft_position: number;
   on_the_clock: boolean;
   current_slot: BoardSlot | null;
   my_next_slot: BoardSlot | null;

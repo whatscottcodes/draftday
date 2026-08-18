@@ -313,6 +313,7 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
         "status": league.status,
         "team_id": team.id,
         "team_name": team.name,
+        "draft_position": team.draft_position,
         "on_the_clock": on_the_clock,
         "current_slot": current,
         "my_next_slot": my_next,
