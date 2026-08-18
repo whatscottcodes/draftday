@@ -178,7 +178,7 @@ export default function TeamPage({
     );
   }
 
-  const theme = getTeamTheme(state.team_name || 1);
+  const theme = getTeamTheme(state.draft_position || 1);
   const current = state.current_slot;
 
   return (

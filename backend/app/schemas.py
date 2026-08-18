@@ -199,6 +199,7 @@ class TeamState(BaseModel):
     status: str
     team_id: int
     team_name: str
+    draft_position: int
     on_the_clock: bool
     current_slot: dict | None = None
     my_next_slot: dict | None = None
