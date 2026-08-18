@@ -29,7 +29,7 @@ app.include_router(router)
 app.include_router(keeper_admin_router)
 
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health() -> Response:
     body = b'{"ok":true}'
     return Response(
@@ -39,7 +39,7 @@ def health() -> Response:
     )
 
 
-@app.get("/api/ping")
+@app.api_route("/api/ping", methods=["GET", "HEAD"])
 def ping() -> Response:
     db = SessionLocal()
     try:
