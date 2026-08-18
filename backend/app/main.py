@@ -31,6 +31,16 @@ app.include_router(keeper_admin_router)
 
 @app.get("/api/health")
 def health() -> Response:
+    body = b'{"ok":true}'
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Length": str(len(body)), "Connection": "close"},
+    )
+
+
+@app.get("/api/ping")
+def ping() -> Response:
     db = SessionLocal()
     try:
         db.execute(text("SELECT 1"))
