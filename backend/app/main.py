@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -30,10 +30,15 @@ app.include_router(keeper_admin_router)
 
 
 @app.get("/api/health")
-def health() -> dict:
+def health() -> Response:
     db = SessionLocal()
     try:
         db.execute(text("SELECT 1"))
     finally:
         db.close()
-    return {"ok": True}
+    body = b'{"ok":true}'
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Length": str(len(body)), "Connection": "close"},
+    )
