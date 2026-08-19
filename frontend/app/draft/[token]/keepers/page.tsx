@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
-import { API_URL, apiJson, isUnauthorized } from "@/lib/api";
+import { API_URL, apiJson, getAdminPasscode, isUnauthorized } from "@/lib/api";
 import type {
   KeeperPreviewCandidate,
   KeeperPreviewTeam,
@@ -108,7 +108,13 @@ export default function KeeperAdminPage({
     setError(null);
     setBusy(label);
     try {
-      const res = await fetch(`${API_URL}${path}`, { method: "POST", body: fd });
+      const res = await fetch(`${API_URL}${path}`, {
+        method: "POST",
+        body: fd,
+        headers: getAdminPasscode()
+          ? { "X-Admin-Passcode": getAdminPasscode() }
+          : {},
+      });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(

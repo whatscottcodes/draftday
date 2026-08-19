@@ -48,17 +48,27 @@ async def admin_gate(request: Request, call_next):
         return await call_next(request)
     expected = os.environ.get("ADMIN_PASSCODE", "").strip()
     if not expected:
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "ADMIN_PASSCODE is not configured on the server"},
+        return _gate_response(
+            request,
+            503,
+            "ADMIN_PASSCODE is not configured on the server",
         )
     provided = request.headers.get("X-Admin-Passcode", "")
     if not provided or not hmac.compare_digest(provided, expected):
-        return JSONResponse(
-            status_code=401,
-            content={"detail": "Commissioner passcode required"},
-        )
+        return _gate_response(request, 401, "Commissioner passcode required")
     return await call_next(request)
+
+
+def _gate_response(request: Request, status: int, detail: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status,
+        content={"detail": detail},
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+            "Access-Control-Allow-Credentials": "true",
+            "Vary": "Origin",
+        },
+    )
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])

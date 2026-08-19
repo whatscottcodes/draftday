@@ -1486,8 +1486,14 @@ def test_admin_gate_blocks_without_passcode(client_no_auth):
 
 def test_admin_gate_rejects_wrong_passcode(client_no_auth):
     c, _ = client_no_auth
-    r = c.get("/api/leagues", headers={"X-Admin-Passcode": "wrong"})
+    r = c.get(
+        "/api/leagues",
+        headers={"X-Admin-Passcode": "wrong", "Origin": "https://example.com"},
+    )
     assert r.status_code == 401
+    # Gate rejections must stay browser-readable (CORS headers included).
+    assert r.headers.get("access-control-allow-origin") == "https://example.com"
+    assert r.headers.get("access-control-allow-credentials") == "true"
 
 
 def test_admin_gate_lets_public_paths_through(client_no_auth):
