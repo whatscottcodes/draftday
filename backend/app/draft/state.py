@@ -38,6 +38,18 @@ def _roster_player_dict(pick: Pick) -> dict:
     }
 
 
+def _keeper_player_dict(keeper: Keeper, round_: int) -> dict:
+    return {
+        "player_id": keeper.player_id,
+        "player_name": keeper.player.name,
+        "position": keeper.player.position,
+        "nfl_team": keeper.player.nfl_team,
+        "pick_number": round_,
+        "round": round_,
+        "pick_type": "keeper",
+    }
+
+
 def assign_roster(
     slots: list[str], players: list[dict]
 ) -> tuple[list[dict], list[dict]]:
@@ -357,18 +369,45 @@ def build_rosters(db: Session, league: League) -> dict:
 
     roster_slots = league.roster_slots or DEFAULT_ROSTER_SLOTS
     teams_out = []
-    for team in teams:
-        roster = [_roster_player_dict(p) for p in picks_by_team.get(team.id, [])]
-        roster_by_slot, bench = assign_roster(roster_slots, roster)
-        teams_out.append(
-            {
-                "team_id": team.id,
-                "team_name": team.name,
-                "draft_position": team.draft_position,
-                "roster": roster_by_slot,
-                "bench": bench,
-            }
+    if league.status in ("SETUP", "READY"):
+        # Draft hasn't started: show confirmed keepers as each team's roster.
+        keeper_rounds = engine.effective_keeper_rounds(db, league)
+        keepers = list(
+            db.scalars(select(Keeper).where(Keeper.league_id == league.id))
         )
+        keepers_by_team: dict[int, list[tuple[Keeper, int]]] = {}
+        for k in keepers:
+            keepers_by_team.setdefault(k.team_id, []).append(
+                (k, keeper_rounds.get(k.id, k.round))
+            )
+        for team in teams:
+            team_keepers = sorted(
+                keepers_by_team.get(team.id, []), key=lambda kr: kr[1]
+            )
+            roster = [_keeper_player_dict(k, r) for k, r in team_keepers]
+            roster_by_slot, bench = assign_roster(roster_slots, roster)
+            teams_out.append(
+                {
+                    "team_id": team.id,
+                    "team_name": team.name,
+                    "draft_position": team.draft_position,
+                    "roster": roster_by_slot,
+                    "bench": bench,
+                }
+            )
+    else:
+        for team in teams:
+            roster = [_roster_player_dict(p) for p in picks_by_team.get(team.id, [])]
+            roster_by_slot, bench = assign_roster(roster_slots, roster)
+            teams_out.append(
+                {
+                    "team_id": team.id,
+                    "team_name": team.name,
+                    "draft_position": team.draft_position,
+                    "roster": roster_by_slot,
+                    "bench": bench,
+                }
+            )
 
     return {
         "league_id": league.id,

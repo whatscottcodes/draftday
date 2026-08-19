@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { apiJsonRetry } from "@/lib/api";
+import { apiJsonRetry, connectDraftSocket } from "@/lib/api";
 import type { RostersState } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
 import { getTeamTheme } from "@/lib/theme";
@@ -16,14 +16,26 @@ export default function RostersPage({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiJsonRetry<RostersState>(`/api/draft/${token}/rosters`)
-      .then((s) => {
-        setState(s);
-        setError(null);
-      })
-      .catch((e) =>
-        setError(e instanceof Error ? e.message : "Failed to load rosters"),
-      );
+    let closed = false;
+    const load = () =>
+      apiJsonRetry<RostersState>(`/api/draft/${token}/rosters`)
+        .then((s) => {
+          if (!closed) {
+            setState(s);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (!closed)
+            setError(e instanceof Error ? e.message : "Failed to load rosters");
+        });
+
+    load();
+    const ws = connectDraftSocket(token, load);
+    return () => {
+      closed = true;
+      ws.close();
+    };
   }, [token]);
 
   if (error && !state) {
@@ -188,7 +200,9 @@ export default function RostersPage({
 
                 {team.roster.every((r) => !r.player) && team.bench.length === 0 && (
                   <p className="text-xs text-slate-500 font-mono py-4 text-center">
-                    No players drafted yet.
+                    {state.status === "SETUP" || state.status === "READY"
+                      ? "No keepers selected yet."
+                      : "No players drafted yet."}
                   </p>
                 )}
               </div>

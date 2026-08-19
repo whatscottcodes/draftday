@@ -465,6 +465,50 @@ def test_rosters_endpoint(client):
     assert rosters["teams"][0]["bench"] == []
 
 
+def test_rosters_show_keepers_before_draft_starts(client):
+    c, _ = client
+    payload = {
+        "name": "Keeper Rosters",
+        "season": "2026",
+        "num_teams": 4,
+        "num_rounds": 12,
+        "teams": [{"name": f"Team {i}", "manager_name": f"Mgr {i}"} for i in range(1, 5)],
+    }
+    data = c.post("/api/leagues", json=payload).json()
+    token = data["access_token"]
+    team1_id = data["teams"][0]["id"]
+    csv_text = (
+        "player_id,name,position,nfl_team,rank,adp\n"
+        "p1,Alpha RB,RB,NFL,1,1.0\n"
+        "p2,Beta RB,RB,NFL,2,2.0\n"
+        "p3,Gamma RB,RB,NFL,3,3.0\n"
+    )
+    assert c.post(f"/api/draft/{token}/admin/import/text", json={"csv": csv_text}).status_code == 200
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    pids = sorted(p["id"] for p in players)
+    for pid in pids:
+        assert (
+            c.post(
+                f"/api/draft/{token}/admin/keepers",
+                json={"team_id": team1_id, "player_id": pid, "round": 11},
+            ).status_code
+            == 200
+        )
+
+    rosters = c.get(f"/api/draft/{token}/rosters").json()
+    team1 = next(t for t in rosters["teams"] if t["team_id"] == team1_id)
+    players_on_team = []
+    for slot in team1["roster"]:
+        if slot["player"]:
+            players_on_team.append(slot["player"])
+    players_on_team.extend(team1["bench"])
+    names = {p["player_name"] for p in players_on_team}
+    assert names == {"Alpha RB", "Beta RB", "Gamma RB"}
+    rounds = sorted(p["round"] for p in players_on_team)
+    assert rounds == [9, 10, 11]
+    assert all(p["pick_type"] == "keeper" for p in players_on_team)
+
+
 def test_delete_league(client):
     c, _ = client
     data = _create_league(c)
