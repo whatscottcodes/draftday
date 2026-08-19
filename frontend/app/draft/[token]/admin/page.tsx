@@ -26,10 +26,24 @@ export default function AdminPage({
   const [csvText, setCsvText] = useState("");
   const [exported, setExported] = useState<string | null>(null);
   const [rosterSlotsText, setRosterSlotsText] = useState("");
+  const [draftOrder, setDraftOrder] = useState<
+    { position: number; team_id: number }[]
+  >([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (config) setRosterSlotsText(config.league.roster_slots.join("\n"));
+  }, [config]);
+
+  useEffect(() => {
+    if (config) {
+      setDraftOrder(
+        config.teams
+          .slice()
+          .sort((a, b) => a.draft_position - b.draft_position)
+          .map((t) => ({ position: t.draft_position, team_id: t.id })),
+      );
+    }
   }, [config]);
 
   const loadConfig = useCallback(async () => {
@@ -163,6 +177,33 @@ export default function AdminPage({
       { drafting_team_id: Number(teamId) },
     );
     if (ok) flash(true, "Slot updated");
+  }
+
+  function setDraftOrderTeam(position: number, teamId: number) {
+    setDraftOrder((prev) =>
+      prev.map((item) =>
+        item.position === position ? { ...item, team_id: teamId } : item,
+      ),
+    );
+  }
+
+  async function saveDraftOrder() {
+    const ids = draftOrder.map((o) => o.team_id);
+    if (new Set(ids).size !== ids.length) {
+      flash(false, "Each team can only hold one pick position");
+      return;
+    }
+    if (
+      !window.confirm(
+        "This rebuilds the ENTIRE slot grid — all traded picks will be reset and must be re-entered. Continue?",
+      )
+    ) {
+      return;
+    }
+    const ok = await action("POST", `/api/draft/${token}/admin/draft-order`, {
+      order: draftOrder.map((o) => ({ position: o.position, team_id: o.team_id })),
+    });
+    if (ok) flash(true, "Draft order saved — slot grid rebuilt");
   }
 
   async function addKeeper() {
@@ -570,6 +611,54 @@ export default function AdminPage({
           </div>
         </section>
       )}
+
+      {/* Draft Order (applies to all rounds) */}
+      <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">
+        <div className="retro-titlebar">
+          <span>📋 DRAFT ORDER — ALL ROUNDS</span>
+          <span className="text-[10px] font-mono text-slate-300">
+            SNAKE · PICK 1..{teams.length}
+          </span>
+        </div>
+        <div className="p-4 bg-slate-950 space-y-3">
+          <p className="text-[10px] font-mono text-slate-400">
+            Assign each round-1 pick position to a team. This order is applied to
+            every round (odd rounds 1→N, even rounds N→1). SAVING REBUILDS the
+            slot grid below — all traded picks are reset and must be re-entered.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {draftOrder.map((item) => (
+              <div key={item.position} className="flex items-center gap-2">
+                <span className="w-14 text-xs font-bold text-yellow-400">
+                  Pick #{item.position}
+                </span>
+                <select
+                  className="input flex-1 py-1 text-xs"
+                  value={item.team_id}
+                  disabled={!editable}
+                  onChange={(e) =>
+                    setDraftOrderTeam(item.position, Number(e.target.value))
+                  }
+                >
+                  {teams.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+          {editable && (
+            <button
+              className="btn btn-primary text-xs"
+              onClick={saveDraftOrder}
+            >
+              💾 SAVE DRAFT ORDER
+            </button>
+          )}
+        </div>
+      </section>
 
       {/* Draft Grid / Slots Editor */}
       <section className="retro-panel p-0 shadow-[3px_3px_0px_#000000]">

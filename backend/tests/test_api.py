@@ -317,6 +317,69 @@ def test_update_roster_slots(client):
     assert resp.status_code == 400
 
 
+def test_set_draft_order_rebuilds_slots_and_resets_trades(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+
+    # Simulate a trade: give the round-2 pick 2 slot to a different team.
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    round2_pick1 = next(
+        s for s in cfg["slots"] if s["round"] == 2 and s["pick_number"] == 5
+    )
+    other = next(t for t in data["teams"] if t["id"] != round2_pick1["original_team_id"])
+    r = c.put(
+        f"/api/draft/{token}/admin/slots/{round2_pick1['slot_id']}",
+        json={"drafting_team_id": other["id"]},
+    )
+    assert r.status_code == 200
+
+    # Reverse the draft order and save.
+    rev = list(reversed(data["teams"]))
+    order = [{"position": i + 1, "team_id": rev[i]["id"]} for i in range(len(rev))]
+    resp = c.post(f"/api/draft/{token}/admin/draft-order", json={"order": order})
+    assert resp.status_code == 200
+
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    assert len(cfg["slots"]) == 8
+    assert [t["draft_position"] for t in cfg["teams"]] == [1, 2, 3, 4]
+    # Round 1 pick 1 is now owned by the old last team.
+    slot1 = cfg["slots"][0]
+    assert slot1["round"] == 1 and slot1["pick_number"] == 1
+    assert slot1["original_team_id"] == rev[0]["id"]
+    # All trades were reset: drafting team == original owner everywhere.
+    assert all(s["drafting_team_id"] == s["original_team_id"] for s in cfg["slots"])
+    # Snake order is preserved for the new mapping.
+    rev_sorted = sorted(cfg["teams"], key=lambda t: t["draft_position"])
+    round2_pick1_after = next(
+        s for s in cfg["slots"] if s["round"] == 2 and s["pick_number"] == 5
+    )
+    assert round2_pick1_after["original_team_id"] == rev_sorted[-1]["id"]
+
+
+def test_set_draft_order_rejects_bad_permutations(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    teams = data["teams"]
+    dup_order = [{"position": 1, "team_id": teams[0]["id"]},
+                 {"position": 2, "team_id": teams[0]["id"]},
+                 {"position": 3, "team_id": teams[2]["id"]},
+                 {"position": 4, "team_id": teams[3]["id"]}]
+    r = c.post(f"/api/draft/{token}/admin/draft-order", json={"order": dup_order})
+    assert r.status_code == 400
+
+    partial = [{"position": 1, "team_id": teams[0]["id"]}]
+    r = c.post(f"/api/draft/{token}/admin/draft-order", json={"order": partial})
+    assert r.status_code == 400
+
+    # Once the draft starts, the order is frozen.
+    c.post(f"/api/draft/{token}/admin/start")
+    ok_order = [{"position": i + 1, "team_id": teams[i]["id"]} for i in range(4)]
+    r = c.post(f"/api/draft/{token}/admin/draft-order", json={"order": ok_order})
+    assert r.status_code == 400
+
+
 def test_roster_by_slot_and_bench(client):
     c, _ = client
     data = _create_league(c)

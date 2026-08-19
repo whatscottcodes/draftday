@@ -43,6 +43,15 @@ class SlotUpdate(BaseModel):
     drafting_team_id: int
 
 
+class DraftOrderItem(BaseModel):
+    position: int = Field(ge=1)
+    team_id: int
+
+
+class DraftOrderIn(BaseModel):
+    order: list[DraftOrderItem]
+
+
 class RosterUpdate(BaseModel):
     slots: list[str]
 

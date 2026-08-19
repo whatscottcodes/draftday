@@ -41,12 +41,13 @@ from ..models import (
     Team,
 )
 from ..schemas import (
+    CsvTextIn,
+    DraftOrderIn,
     DraftState,
     KeeperIn,
     KeeperPickIn,
     LeagueCreate,
     LeagueCreated,
-    CsvTextIn,
     PickIn,
     PlayerImport,
     PlayerImportRow,
@@ -297,6 +298,22 @@ def update_slot(
     league = _get_league(db, token)
     try:
         engine.update_draft_slot_owner(db, league, slot_id, body.drafting_team_id)
+    except DraftError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _commit(db)
+    _schedule_broadcast(league)
+    return {"ok": True}
+
+
+@router.post("/draft/{token}/admin/draft-order")
+def set_draft_order(
+    token: str, body: DraftOrderIn, db: Session = Depends(get_db)
+):
+    league = _get_league(db, token)
+    try:
+        engine.set_draft_order(
+            db, league, [(item.position, item.team_id) for item in body.order]
+        )
     except DraftError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     _commit(db)

@@ -65,6 +65,48 @@ def create_draft_slots(db: Session, league: League) -> list[DraftSlot]:
     return slots
 
 
+def set_draft_order(
+    db: Session, league: League, order: list[tuple[int, int]]
+) -> None:
+    """Reassign every team's draft position and rebuild the slot grid.
+
+    ``order`` is a list of (position, team_id) pairs covering positions
+    1..num_teams and every team exactly once. All existing slots are
+    discarded and regenerated from the new order, so any traded-pick
+    assignments are reset and must be re-entered.
+    """
+    if league.status not in (LeagueStatus.SETUP, LeagueStatus.READY):
+        raise DraftError("Draft order can only be changed before the draft starts")
+    teams = {t.id: t for t in league.teams}
+    if len(order) != league.num_teams:
+        raise DraftError(
+            f"Draft order must assign all {league.num_teams} positions"
+        )
+    positions = sorted(p for p, _ in order)
+    if positions != list(range(1, league.num_teams + 1)):
+        raise DraftError("Draft order must cover every position exactly once")
+    if sorted(t for _, t in order) != sorted(teams.keys()):
+        raise DraftError("Draft order must include every team exactly once")
+    # Two-phase update so the (league_id, draft_position) unique constraint
+    # never sees an intermediate collision while positions are swapped.
+    n = league.num_teams
+    for i, (_, team_id) in enumerate(order):
+        teams[team_id].draft_position = n + 1 + i
+    db.flush()
+    for position, team_id in order:
+        teams[team_id].draft_position = position
+    db.flush()
+    db.execute(delete(DraftSlot).where(DraftSlot.league_id == league.id))
+    create_draft_slots(db, league)
+    db.add(
+        DraftEvent(
+            league_id=league.id,
+            event_type="draft_order_reset",
+            payload={"order": order},
+        )
+    )
+
+
 def slot_status(db: Session, slot: DraftSlot) -> str:
     pick = db.scalar(select(Pick).where(Pick.draft_slot_id == slot.id))
     if pick is not None:
