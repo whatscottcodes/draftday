@@ -117,6 +117,24 @@ def test_start_prefills_keepers(db, league_factory):
     assert all(p.pick_type == "keeper" for p in keeper_picks)
 
 
+def test_start_places_colliding_keepers_at_distinct_rounds(db, league_factory):
+    league, teams, players = league_factory(num_teams=4, num_rounds=12, with_players=20)
+    team = teams[0]
+    for player in players[:3]:
+        engine.add_keeper(db, league, team.id, player.id, 11)
+    start_draft(db, league)
+    assert league.status == "LIVE"
+    keeper_picks = [
+        p
+        for p in db.query(League).filter_by(id=league.id).one().picks
+        if p.pick_type == "keeper"
+    ]
+    assert len(keeper_picks) == 3
+    rounds = sorted(p.slot.round for p in keeper_picks)
+    assert rounds == [9, 10, 11]
+    assert all(p.team_id == team.id for p in keeper_picks)
+
+
 def test_start_rejects_after_completed(db, league_factory):
     league, teams, players = league_factory(num_teams=2, num_rounds=1, with_players=8)
     start_draft(db, league)

@@ -75,7 +75,7 @@ def _slot_dict(slot: DraftSlot, num_teams: int, pick: Pick | None, keeper: Keepe
         "original_team_id": slot.original_team_id,
         "drafting_team_id": slot.drafting_team_id,
         "status": status,
-        "keeper_round": keeper.round if keeper else None,
+        "keeper_round": slot.round if keeper else None,
     }
 
 
@@ -116,7 +116,8 @@ def build_draft_state(db: Session, league: League) -> dict:
         roster_counts[p.team_id] = roster_counts.get(p.team_id, 0) + 1
 
     keepers = list(db.scalars(select(Keeper).where(Keeper.league_id == league.id)))
-    keeper_by_key = {(k.round, k.team_id): k for k in keepers}
+    keeper_eff = engine.effective_keeper_rounds(db, league)
+    keeper_by_key = {(keeper_eff[k.id], k.team_id): k for k in keepers}
 
     slots = db.scalars(
         select(DraftSlot)
@@ -199,6 +200,7 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
     roster = [_roster_player_dict(p) for p in picks]
     roster_slots = league.roster_slots or DEFAULT_ROSTER_SLOTS
     roster_by_slot, bench = assign_roster(roster_slots, roster)
+    keeper_rounds = engine.effective_keeper_rounds(db, league)
     keepers = [
         {
             "keeper_id": k.id,
@@ -206,7 +208,7 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
             "player_name": k.player.name,
             "position": k.player.position,
             "nfl_team": k.player.nfl_team,
-            "round": k.round,
+            "round": keeper_rounds.get(k.id, k.round),
         }
         for k in db.scalars(
             select(Keeper).where(

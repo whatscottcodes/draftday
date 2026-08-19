@@ -256,6 +256,55 @@ def remove_keeper(db: Session, league: League, keeper_id: int) -> None:
     db.flush()
 
 
+def effective_keeper_rounds(db: Session, league: League) -> dict[int, int]:
+    """Distinct keeper cost rounds per team, computed from nominal rounds.
+
+    When a team keeps several players at the same cost round (e.g. three at
+    round 11), they are spread across consecutive earlier rounds so each has a
+    different cost (9, 10, 11). Within a collision the better-ranked player
+    keeps the original (cheaper) round, tiebroken by name. Returns a map of
+    keeper_id -> effective round. Deterministic and independent of the order
+    the keepers were selected.
+    """
+    keepers = list(
+        db.scalars(select(Keeper).where(Keeper.league_id == league.id))
+    )
+    if not keepers:
+        return {}
+    ranks: dict[int, int] = {}
+    for rid, pid in db.execute(
+        select(Ranking.rank, Ranking.player_id).where(
+            Ranking.league_id == league.id,
+            Ranking.player_id.in_([k.player_id for k in keepers]),
+        )
+    ):
+        ranks[pid] = rid
+    by_team: dict[int, list[Keeper]] = {}
+    for k in keepers:
+        by_team.setdefault(k.team_id, []).append(k)
+    result: dict[int, int] = {}
+    for team_keepers in by_team.values():
+        ordered = sorted(
+            team_keepers,
+            key=lambda k: (
+                -k.round,
+                ranks.get(k.player_id, 10**9),
+                (k.player.name or "").casefold(),
+            ),
+        )
+        used: set[int] = set()
+        for k in ordered:
+            final = k.round
+            while final in used and final > 1:
+                final -= 1
+            if final in used:
+                result[k.id] = k.round
+            else:
+                result[k.id] = final
+                used.add(final)
+    return result
+
+
 def team_add_keeper(
     db: Session, league: League, team: Team, player_id: int
 ) -> Keeper:

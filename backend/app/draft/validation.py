@@ -15,6 +15,7 @@ from ..models import (
     Player,
     Ranking,
 )
+from . import engine
 
 
 def validate_draft_configuration(
@@ -98,15 +99,17 @@ def validate_draft_configuration(
     slots_by_round_team: dict[tuple[int, int], DraftSlot] = {
         (s.round, s.drafting_team_id): s for s in slots
     }
+    keeper_rounds = engine.effective_keeper_rounds(db, league)
     for keeper in keepers:
-        if not (1 <= keeper.round <= league.num_rounds):
+        kround = keeper_rounds.get(keeper.id, keeper.round)
+        if not (1 <= kround <= league.num_rounds):
             errors.append(
                 {
                     "severity": "error",
                     "code": "keeper_round",
                     "message": (
                         f"{keeper.team.name} keeper {keeper.player.name} has "
-                        f"invalid round {keeper.round}."
+                        f"invalid round {kround}."
                     ),
                 }
             )
@@ -119,14 +122,14 @@ def validate_draft_configuration(
                     "message": f"Keeper references an unknown player (id {keeper.player_id}).",
                 }
             )
-        if (keeper.round, keeper.team_id) not in slots_by_round_team:
+        if (kround, keeper.team_id) not in slots_by_round_team:
             errors.append(
                 {
                     "severity": "error",
                     "code": "keeper_no_slot",
                     "message": (
                         f"{keeper.team.name} keeps {keeper.player.name} in round "
-                        f"{keeper.round} but owns no draft slot in that round "
+                        f"{kround} but owns no draft slot in that round "
                         "(pick was traded away or does not exist)."
                     ),
                 }
@@ -190,8 +193,11 @@ def start_draft(db: Session, league: League) -> None:
     keepers = list(
         db.scalars(select(Keeper).where(Keeper.league_id == league.id))
     )
+    keeper_rounds = engine.effective_keeper_rounds(db, league)
     for keeper in keepers:
-        slot = slots_by_round_team[(keeper.round, keeper.team_id)]
+        slot = slots_by_round_team[
+            (keeper_rounds.get(keeper.id, keeper.round), keeper.team_id)
+        ]
         existing = db.scalar(
             select(Pick).where(
                 Pick.draft_slot_id == slot.id,

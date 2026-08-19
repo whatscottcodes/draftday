@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.main import app
-from app.models import League, LeagueStatus, Pick, PickType
+from app.models import Keeper, League, LeagueStatus, Pick, PickType
 
 
 @pytest.fixture()
@@ -536,6 +536,79 @@ def test_keeper_candidate_import_replaces_existing_candidates(client):
     assert len(candidates) == 1
     assert candidates[0]["team_name"] == "Team 2"
     assert candidates[0]["player_name"] == "Deebo Samuel"
+
+
+def test_keeper_rounds_rebalanced_when_colliding(client):
+    c, _ = client
+    payload = {
+        "name": "Rebalance League",
+        "season": "2026",
+        "num_teams": 4,
+        "num_rounds": 12,
+        "teams": [{"name": f"Team {i}", "manager_name": f"Mgr {i}"} for i in range(1, 5)],
+    }
+    data = c.post("/api/leagues", json=payload).json()
+    token = data["access_token"]
+    team1_id = data["teams"][0]["id"]
+    csv_text = (
+        "player_id,name,position,nfl_team,rank,adp\n"
+        "p1,Alpha RB,RB,NFL,1,1.0\n"
+        "p2,Beta RB,RB,NFL,2,2.0\n"
+        "p3,Gamma RB,RB,NFL,3,3.0\n"
+    )
+    assert c.post(f"/api/draft/{token}/admin/import/text", json={"csv": csv_text}).status_code == 200
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    pids = sorted(p["id"] for p in players)
+
+    for pid in pids:
+        assert (
+            c.post(
+                f"/api/draft/{token}/admin/keepers",
+                json={"team_id": team1_id, "player_id": pid, "round": 11},
+            ).status_code
+            == 200
+        )
+
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    rounds = sorted(k["round"] for k in cfg["keepers"] if k["team_id"] == team1_id)
+    assert rounds == [9, 10, 11]
+    by_name = {k["player_name"]: k["round"] for k in cfg["keepers"] if k["team_id"] == team1_id}
+    assert by_name["Alpha RB"] == 11
+    assert by_name["Beta RB"] == 10
+    assert by_name["Gamma RB"] == 9
+
+
+def test_keeper_rounds_rebalanced_on_read(client):
+    c, session = client
+    payload = {
+        "name": "Legacy League",
+        "season": "2026",
+        "num_teams": 4,
+        "num_rounds": 12,
+        "teams": [{"name": f"Team {i}", "manager_name": f"Mgr {i}"} for i in range(1, 5)],
+    }
+    data = c.post("/api/leagues", json=payload).json()
+    token = data["access_token"]
+    csv_text = (
+        "player_id,name,position,nfl_team,rank,adp\n"
+        "p1,Alpha RB,RB,NFL,1,1.0\n"
+        "p2,Beta RB,RB,NFL,2,2.0\n"
+        "p3,Gamma RB,RB,NFL,3,3.0\n"
+    )
+    assert c.post(f"/api/draft/{token}/admin/import/text", json={"csv": csv_text}).status_code == 200
+
+    # Simulate keepers selected before this feature shipped: all round 11.
+    league = session.get(League, data["id"])
+    players = {p.name: p for p in league.players}
+    team1 = league.teams[0]
+    for name in ["Alpha RB", "Beta RB", "Gamma RB"]:
+        session.add(Keeper(league_id=league.id, team_id=team1.id, player_id=players[name].id, round=11))
+    session.flush()
+
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    rounds = sorted(k["round"] for k in cfg["keepers"] if k["team_id"] == team1.id)
+    assert rounds == [9, 10, 11]
+    assert len(cfg["keepers"]) == 3
 
 
 def test_team_self_select_keepers_and_lock(client):

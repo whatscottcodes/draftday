@@ -201,6 +201,7 @@ def admin_config(token: str, db: Session = Depends(get_db)):
     keepers = list(
         db.scalars(select(Keeper).where(Keeper.league_id == league.id))
     )
+    keeper_rounds = engine.effective_keeper_rounds(db, league)
     picked_player_ids = {
         p.player_id
         for p in db.scalars(select(Pick).where(Pick.league_id == league.id))
@@ -247,7 +248,7 @@ def admin_config(token: str, db: Session = Depends(get_db)):
                 "player_id": k.player_id,
                 "player_name": k.player.name,
                 "position": k.player.position,
-                "round": k.round,
+                "round": keeper_rounds.get(k.id, k.round),
             }
             for k in keepers
         ],
