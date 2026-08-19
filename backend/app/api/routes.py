@@ -14,7 +14,7 @@ from fastapi import (
     UploadFile,
     WebSocket,
 )
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -397,6 +397,8 @@ def import_keepers(
         warnings.extend(file_warnings)
     if not rows:
         raise HTTPException(status_code=400, detail="No keeper candidates found")
+    # A fresh keeper upload replaces any previously saved candidates.
+    clear_candidates(db, league)
     stats = import_candidate_rows(db, league, rows, source="import")
     _commit(db)
     _schedule_broadcast(league)
@@ -410,6 +412,7 @@ def import_players_json(
     league = _get_league(db, token)
     if league.status != LeagueStatus.SETUP:
         raise HTTPException(status_code=400, detail="Players can only be imported during setup")
+    _replace_player_pool(db, league)
     for row in body.players:
         _upsert_player(db, league, row)
     _commit(db)
@@ -428,6 +431,7 @@ def import_players_csv(
     rows = parse_players_csv(raw)
     if not rows:
         raise HTTPException(status_code=400, detail="Empty CSV file")
+    _replace_player_pool(db, league)
     for row in rows:
         _upsert_player(db, league, row)
     _commit(db)
@@ -445,11 +449,28 @@ def import_players_text(
     rows = parse_players_csv(body.csv)
     if not rows:
         raise HTTPException(status_code=400, detail="Empty CSV text")
+    _replace_player_pool(db, league)
     for row in rows:
         _upsert_player(db, league, row)
     _commit(db)
     _schedule_broadcast(league)
     return {"ok": True, "imported": len(rows)}
+
+
+def _replace_player_pool(db: Session, league: League) -> None:
+    """Drop the league's player pool so an upload replaces it instead of merging.
+
+    Deletes in FK-safe order: rankings, keeper candidates, confirmed keepers,
+    picks, then players.
+    """
+    league_id = league.id
+    db.execute(delete(Ranking).where(Ranking.league_id == league_id))
+    db.execute(
+        delete(KeeperCandidate).where(KeeperCandidate.league_id == league_id)
+    )
+    db.execute(delete(Keeper).where(Keeper.league_id == league_id))
+    db.execute(delete(Pick).where(Pick.league_id == league_id))
+    db.execute(delete(Player).where(Player.league_id == league_id))
 
 
 def _norm_key(value: str) -> str:

@@ -245,6 +245,30 @@ def test_fantasypros_text_import(client):
     assert all(p["position"] in ("RB", "WR") for p in players)
 
 
+def test_player_pool_import_replaces_existing_pool(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/text",
+        json={"csv": FANTASYPROS_CSV},
+    )
+    assert resp.status_code == 200
+    assert len(c.get(f"/api/draft/{token}/admin/config").json()["players"]) == 3
+
+    # A second upload replaces the pool instead of appending to it.
+    second = "player_id,name,position,nfl_team,status,rank,adp\nsolo,Only Guy,RB,NFL,available,1,1.0\n"
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/text",
+        json={"csv": second},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["imported"] == 1
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    assert len(players) == 1
+    assert players[0]["name"] == "Only Guy"
+
+
 def test_fantasypros_rankings_used_by_state(client):
     c, _ = client
     data = _create_league(c)
@@ -482,6 +506,38 @@ def test_import_keeper_candidates_keepers_format(client):
     assert len(cfg["players"]) == 2
 
 
+def test_keeper_candidate_import_replaces_existing_candidates(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    first = (
+        "Team,Player,Keeper_2024,Round_2024,2025_Cost\n"
+        "Team 1,RB NYJ 9 Breece Hall,True,2,1\n"
+    )
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/keepers",
+        files={"files": ("keepers.csv", first, "text/csv")},
+    )
+    assert resp.status_code == 200
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    assert len(cfg["keeper_candidates"]) == 1
+
+    second = (
+        "Team,Player,Keeper_2024,Round_2024,2025_Cost\n"
+        "Team 2,WR SF 11 Deebo Samuel,False,5,4\n"
+    )
+    resp = c.post(
+        f"/api/draft/{token}/admin/import/keepers",
+        files={"files": ("keepers.csv", second, "text/csv")},
+    )
+    assert resp.status_code == 200
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    candidates = cfg["keeper_candidates"]
+    assert len(candidates) == 1
+    assert candidates[0]["team_name"] == "Team 2"
+    assert candidates[0]["player_name"] == "Deebo Samuel"
+
+
 def test_team_self_select_keepers_and_lock(client):
     c, _ = client
     payload = {
@@ -501,18 +557,17 @@ def test_team_self_select_keepers_and_lock(client):
         "Player 4,p4,O,NFL,RB,False,2.0\n"
         "Player 5,p5,O,NFL,TE,False,2.0\n"
     )
-    resp = c.post(
-        f"/api/draft/{token}/admin/import/keepers",
-        files={"files": ("Team 1.csv", roster_csv, "text/csv")},
-    )
-    assert resp.status_code == 200
     team2_csv = (
         "name,player_id,position_type,team,selected_position,was_added,2025_Cost\n"
         "Player 6,p6,O,NFL,QB,False,1.0\n"
     )
+    # Keepers are replaced per upload, so upload all team files in one request.
     c.post(
         f"/api/draft/{token}/admin/import/keepers",
-        files={"files": ("Team 2.csv", team2_csv, "text/csv")},
+        files=[
+            ("files", ("Team 1.csv", roster_csv, "text/csv")),
+            ("files", ("Team 2.csv", team2_csv, "text/csv")),
+        ],
     )
 
     team1 = data["teams"][0]["access_token"]
@@ -841,6 +896,38 @@ def test_keeper_admin_full_flow(client):
     assert len(export["teams"]) == 1
     assert "Breece Hall" not in export["teams"][0]["csv"]
     assert "Jahmyr Gibbs" in export["teams"][0]["csv"]
+
+
+def test_keeper_admin_rosters_csv_replace(client):
+    c, session = client
+    data = _create_league(c)
+    token = data["access_token"]
+    team1_csv = (
+        "name,player_id,team,selected_position,was_added\n"
+        "Breece Hall,p1,SF,RB,False\n"
+    )
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/rosters-csv",
+        files=[("files", ("Team 1.csv", team1_csv, "text/csv"))],
+    )
+    assert r.status_code == 200
+    assert r.json()["teams"] == {"Team 1": 1}
+
+    team2_csv = (
+        "name,player_id,team,selected_position,was_added\n"
+        "Tyreek Hill,p2,NYJ,WR,False\n"
+    )
+    r = c.post(
+        f"/api/draft/{token}/admin/keepers/rosters-csv",
+        files=[("files", ("Team 2.csv", team2_csv, "text/csv"))],
+    )
+    assert r.status_code == 200
+    assert r.json()["teams"] == {"Team 2": 1}
+
+    league = session.get(League, data["id"])
+    ws = league.keeper_workspace or {}
+    assert list(ws["rosters"].keys()) == ["Team 2"]
+    assert ws["rosters"]["Team 2"][0]["player_id"] == "p2"
 
 
 def test_keeper_admin_round_two_draft_eliminated(client):

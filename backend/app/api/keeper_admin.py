@@ -428,8 +428,9 @@ def upload_rosters_csv(
 ):
     league = _get_league(db, token)
     ws = _get_workspace(league)
-    rosters = ws.setdefault("rosters", {})
-    yahoo_teams = ws.setdefault("yahoo_teams", [])
+    # A fresh roster upload replaces any previously saved rosters.
+    rosters: dict[str, list[dict]] = {}
+    yahoo_teams: list[str] = []
     loaded: dict[str, int] = {}
     errors: list[str] = []
     for file in files:
@@ -447,6 +448,8 @@ def upload_rosters_csv(
             yahoo_teams.append(stem)
         loaded[stem] = len(rows)
     if loaded:
+        ws["rosters"] = rosters
+        ws["yahoo_teams"] = yahoo_teams
         ws["roster_source"] = "CSV"
         ws["roster_week"] = None
     ws.pop("preview", None)
