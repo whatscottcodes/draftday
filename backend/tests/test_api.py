@@ -576,6 +576,12 @@ def test_keeper_rounds_rebalanced_when_colliding(client):
     assert by_name["Alpha RB"] == 11
     assert by_name["Beta RB"] == 10
     assert by_name["Gamma RB"] == 9
+    keeper_slots = {
+        s["round"]
+        for s in cfg["slots"]
+        if s["status"] == "KEEPER" and s["drafting_team_id"] == team1_id
+    }
+    assert keeper_slots == {9, 10, 11}
 
 
 def test_keeper_rounds_rebalanced_on_read(client):

@@ -111,15 +111,15 @@ def slot_status(db: Session, slot: DraftSlot) -> str:
     pick = db.scalar(select(Pick).where(Pick.draft_slot_id == slot.id))
     if pick is not None:
         return "FILLED"
-    keeper = db.scalar(
-        select(Keeper).where(
-            Keeper.league_id == slot.league_id,
-            Keeper.round == slot.round,
-            Keeper.team_id == slot.drafting_team_id,
+    league = db.get(League, slot.league_id)
+    if league is not None:
+        keepers = list(
+            db.scalars(select(Keeper).where(Keeper.league_id == league.id))
         )
-    )
-    if keeper is not None:
-        return "KEEPER"
+        keeper_eff = effective_keeper_rounds(db, league)
+        keeper_keys = {(keeper_eff[k.id], k.team_id) for k in keepers}
+        if (slot.round, slot.drafting_team_id) in keeper_keys:
+            return "KEEPER"
     return "OPEN"
 
 
@@ -136,10 +136,14 @@ def bulk_slot_statuses(db: Session, slots: list[DraftSlot]) -> dict[int, str]:
         p.draft_slot_id
         for p in db.scalars(select(Pick).where(Pick.draft_slot_id.in_(slot_ids)))
     }
-    keeper_keys = {
-        (k.round, k.team_id)
-        for k in db.scalars(select(Keeper).where(Keeper.league_id == slots[0].league_id))
-    }
+    keeper_keys: set[tuple[int, int]] = set()
+    league = db.get(League, slots[0].league_id)
+    if league is not None:
+        keepers = list(
+            db.scalars(select(Keeper).where(Keeper.league_id == league.id))
+        )
+        keeper_eff = effective_keeper_rounds(db, league)
+        keeper_keys = {(keeper_eff[k.id], k.team_id) for k in keepers}
     statuses: dict[int, str] = {}
     for s in slots:
         if s.id in picked:
