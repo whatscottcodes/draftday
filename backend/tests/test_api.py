@@ -822,7 +822,8 @@ def test_keeper_admin_full_flow(client):
     assert "Tyreek Hill" not in by_name
     # Round-1 drafted -> cannot be kept.
     assert "Breece Hall" not in by_name
-    assert by_name["Jahmyr Gibbs"]["cost_round"] == 11
+    # Drafted by this team (round 3) -> draft-based cost, even if later added/dropped.
+    assert by_name["Jahmyr Gibbs"]["cost_round"] == 1
     assert by_name["Jahmyr Gibbs"]["years_kept"] == 0
     assert "kept 2 consecutive" in "\n".join(body["warnings"])
     assert "Breece Hall drafted in round 1" in "\n".join(body["warnings"])
@@ -1139,13 +1140,107 @@ def test_keeper_admin_uses_original_draft_pick_for_traded_player(client):
         for player in response.json()["preview"][0]["candidates"]
     }
     assert candidates["Own Player"]["cost_round"] == 1
+    # Trade confirmed by transaction row -> round from the ORIGINAL team's draft.
     assert candidates["Traded Player"]["cost_round"] == 6
-    # No transaction row: finding the player on another team's draft implies a trade.
-    assert candidates["Inferred Trade"]["cost_round"] == 8
+    # No transaction row: not drafted by this team and not traded -> dropped (round 11).
+    assert candidates["Inferred Trade"]["cost_round"] == 11
     assert candidates["Free Agent"]["cost_round"] == 11
-    assert "Free Agent not found in previous draft; using round 11" in "\n".join(
+    assert "Free Agent not drafted by this team and no trade found" in "\n".join(
         response.json()["warnings"]
     )
+
+
+def test_keeper_admin_traces_multi_hop_trade_to_original_drafter(client):
+    c, _ = client
+    data = _create_league(c)
+    token = data["access_token"]
+    team1 = data["teams"][0]["id"]
+
+    # Team 2 drafted "Chained Player" in round 8, then traded him to Team 3,
+    # who traded him to Team 1. Cost must come from Team 2's draft, not Team 3.
+    previous = (
+        "ROUND,Team 1,Team 2,Team 3\n"
+        '5,"RB\nNYJ\n1\nOwn\nPlayer",,\n'
+        '8,,"WR\nCIN\n2\nChained\nPlayer"\n'
+        '10,,,"TE\nDET\n3\nTeam3\nPlayer"\n'
+    )
+    assert _upload_draft_csv(c, token, "2025", "previous", previous).status_code == 200
+
+    prior = "ROUND,Team 1,Team 2,Team 3\n" '12,"QB\nBUF\n1\nPrior\nPlayer",,\n'
+    assert _upload_draft_csv(c, token, "2024", "prior", prior).status_code == 200
+
+    roster = (
+        "name,player_id,team,selected_position,was_added\n"
+        "Own Player,p1,NYJ,RB,False\n"
+        "Chained Player,p2,CIN,WR,True\n"
+    )
+    assert c.post(
+        f"/api/draft/{token}/admin/keepers/rosters-csv",
+        files=[("files", ("Team 1.csv", roster, "text/csv"))],
+    ).status_code == 200
+
+    mappings = {
+        "mappings": [
+            {"team_id": team1, "draft_name": "Team 1", "yahoo_name": "Team 1"}
+        ]
+    }
+    assert c.post(f"/api/draft/{token}/admin/keepers/mappings", json=mappings).status_code == 200
+
+    # Trade 1: Chained Player Team 2 -> Team 3 (with Team3 Player going back).
+    trade_rows = """
+      <tr>
+        <td><span class="F-icon Fz-xl F-trade"></span></td>
+        <td>
+          <a href="https://sports.yahoo.com/nfl/players/2">Chained Player</a>
+        </td>
+        <td class="Ta-end">
+          <a href="/2025/f1/123/3">Team 3</a>
+          <span class="F-timestamp">Oct 1, 11:00 am</span>
+        </td>
+      </tr>
+      <tr>
+        <td></td>
+        <td>
+          <a href="https://sports.yahoo.com/nfl/players/3">Team3 Player</a>
+        </td>
+        <td class="Ta-end">
+          <a href="/2025/f1/123/2">Team 2</a>
+          <span class="F-timestamp">Oct 1, 11:00 am</span>
+        </td>
+      </tr>
+      <tr>
+        <td><span class="F-icon Fz-xl F-trade"></span></td>
+        <td>
+          <a href="https://sports.yahoo.com/nfl/players/2">Chained Player</a>
+        </td>
+        <td class="Ta-end">
+          <a href="/2025/f1/123/1">Team 1</a>
+          <span class="F-timestamp">Oct 9, 2:30 pm</span>
+        </td>
+      </tr>
+      <tr>
+        <td></td>
+        <td>
+          <a href="https://sports.yahoo.com/nfl/players/4">Return Player</a>
+        </td>
+        <td class="Ta-end">
+          <a href="/2025/f1/123/3">Team 3</a>
+          <span class="F-timestamp">Oct 9, 2:30 pm</span>
+        </td>
+      </tr>
+    """
+    assert _upload_transactions(c, token, _yahoo_transactions_html(trade_rows)).status_code == 200
+
+    response = c.post(f"/api/draft/{token}/admin/keepers/identify")
+    assert response.status_code == 200
+    candidates = {
+        player["player_name"]: player
+        for player in response.json()["preview"][0]["candidates"]
+    }
+    # Own draft pick -> own round.
+    assert candidates["Own Player"]["cost_round"] == 3
+    # Traced back through Team 3 to the original drafter Team 2 (round 8).
+    assert candidates["Chained Player"]["cost_round"] == 6
 
 
 def test_keeper_admin_rejects_non_transaction_html(client):

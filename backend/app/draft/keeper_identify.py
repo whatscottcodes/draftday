@@ -44,30 +44,22 @@ def identify_candidates(
 ) -> tuple[list[dict], list[str]]:
     """Compute keepable players and round costs for each app team.
 
-    Rules (mirroring the keepers/ scripts):
-      - A player missing from their current team's draft list is searched for
-        across the full draft board and treated as traded when found.
-      - A transaction-confirmed trade also uses the original pick from the
-        previous season's draft, regardless of the current fantasy team.
+    Rules:
+      - A player drafted by their current team keeps that draft round as the
+        cost basis (round - 2, or round - 1 when they were kept last season,
+        floored at 1).
+      - A player NOT drafted by their current team is only credited to another
+        team's draft when a confirmed trade brought them to this team; the cost
+        basis is the round from the original drafting team's draft.
       - A player drafted in round 1 or 2 of the previous season cannot be kept.
-      - A free agent or player with no previous-season draft pick costs round 11.
-      - Draft-based cost is round-1 when they were kept that season (the '(K)'
-        marker), else round-2, floored at 1.
       - A player kept two consecutive seasons (kept in both the previous and
         the season before) is no longer keepable.
+      - A player neither drafted by the team nor traded to them is assumed to
+        have been dropped during the season and costs round 11.
     """
     warnings: list[str] = []
-    traded_names = {
-        normalize_name(transaction.get("player", ""))
-        for transaction in transactions
-        if transaction.get("player")
-    }
-    traded_ids = {
-        str(transaction.get("player_id"))
-        for transaction in transactions
-        if transaction.get("player_id")
-    }
-    all_draft_picks = _index_all_picks(draft_picks)
+    draft_key_index = _draft_key_index(draft_picks, mappings)
+    txs_by_key = _index_transactions(transactions)
     all_prior_picks = _index_all_picks(prior_draft_picks)
 
     results: list[dict] = []
@@ -99,38 +91,33 @@ def identify_candidates(
                 continue
             nkey = normalize_name(name)
             player_id = str(player.get("player_id") or "")
-            transaction_trade = player_id in traded_ids or nkey in traded_names
-            team_pick = draft_index.get(nkey)
-            drafted = all_draft_picks.get(nkey) if team_pick is None else None
-            inferred_trade = drafted is not None
-            was_traded = transaction_trade or inferred_trade
-            pick = team_pick or (drafted["pick"] if drafted else None)
-            if not was_traded and player.get("was_added"):
-                team_results.append(
-                    _candidate(
-                        name,
-                        player,
-                        None,
-                        cost_round=11,
-                        years_kept=0,
-                        season=season,
-                    )
-                )
-                continue
+            pick = draft_index.get(nkey)
             if pick is None:
-                reason = "traded player has no drafting team" if was_traded else "not found in previous draft"
-                warnings.append(f"{team['name']}: {name} {reason}; using round 11")
-                team_results.append(
-                    _candidate(
-                        name,
-                        player,
-                        None,
-                        cost_round=11,
-                        years_kept=0,
-                        season=season,
-                    )
+                pick = _find_traded_pick(
+                    player_id=player_id,
+                    nkey=nkey,
+                    draft_name=draft_name,
+                    yahoo_name=yahoo_name,
+                    txs_by_key=txs_by_key,
+                    draft_picks=draft_picks,
+                    draft_key_index=draft_key_index,
                 )
-                continue
+                if pick is None:
+                    warnings.append(
+                        f"{team['name']}: {name} not drafted by this team and no "
+                        f"trade found — assuming dropped; using round 11"
+                    )
+                    team_results.append(
+                        _candidate(
+                            name,
+                            player,
+                            None,
+                            cost_round=11,
+                            years_kept=0,
+                            season=season,
+                        )
+                    )
+                    continue
             if pick["round"] <= 2:
                 warnings.append(
                     f"{team['name']}: {name} drafted in round {pick['round']} — cannot be kept"
@@ -208,3 +195,94 @@ def _index_all_picks(drafts: dict[str, list[dict]]) -> dict[str, dict]:
         for key, pick in _index_picks(picks).items():
             index.setdefault(key, {"team": team_name, "pick": pick})
     return index
+
+
+def _draft_key_index(
+    draft_picks: dict[str, list[dict]], mappings: dict[int, dict]
+) -> dict[str, str]:
+    """Map any normalized team name (draft or Yahoo) to a draft data key."""
+    index: dict[str, str] = {}
+    for key in draft_picks:
+        index.setdefault(normalize_name(key), key)
+    for mapping in mappings.values():
+        draft_name = (mapping.get("draft_name") or "").strip()
+        yahoo_name = (mapping.get("yahoo_name") or "").strip()
+        if draft_name:
+            index.setdefault(normalize_name(draft_name), draft_name)
+        if yahoo_name:
+            index.setdefault(normalize_name(yahoo_name), draft_name or yahoo_name)
+    return index
+
+
+def _index_transactions(transactions: list[dict]) -> dict[str, list[dict]]:
+    index: dict[str, list[dict]] = {}
+    for tx in transactions:
+        player_id = str(tx.get("player_id") or "")
+        name = normalize_name(tx.get("player") or "")
+        if player_id:
+            index.setdefault(player_id, []).append(tx)
+        if name:
+            index.setdefault(name, []).append(tx)
+    return index
+
+
+def _picks_for_team(
+    team_name: str,
+    draft_picks: dict[str, list[dict]],
+    draft_key_index: dict[str, str],
+) -> list[dict] | None:
+    draft_key = draft_key_index.get(normalize_name(team_name))
+    if draft_key:
+        return draft_picks.get(draft_key)
+    return draft_picks.get(team_name) or draft_picks.get(normalize_name(team_name))
+
+
+def _find_traded_pick(
+    *,
+    player_id: str,
+    nkey: str,
+    draft_name: str,
+    yahoo_name: str,
+    txs_by_key: dict[str, list[dict]],
+    draft_picks: dict[str, list[dict]],
+    draft_key_index: dict[str, str],
+) -> dict | None:
+    """Round a traded player was originally drafted at.
+
+    Finds the trade that brought the player to the current team, then traces
+    the trade chain back to the team that originally drafted them and returns
+    that pick. Returns None when the player was never traded to this team or no
+    draft pick can be traced for the original team.
+    """
+    txs = (txs_by_key.get(player_id) if player_id else []) or txs_by_key.get(nkey) or []
+    if not txs:
+        return None
+    current_names = {normalize_name(n) for n in (draft_name, yahoo_name) if n}
+    inbound = next(
+        (
+            tx
+            for tx in txs
+            if normalize_name(tx.get("to_team") or "") in current_names
+        ),
+        None,
+    )
+    if inbound is None:
+        return None
+    seen: set[str] = set()
+    current = inbound.get("from_team") or ""
+    while current and normalize_name(current) not in seen:
+        seen.add(normalize_name(current))
+        picks = _picks_for_team(current, draft_picks, draft_key_index)
+        if picks:
+            pick = _index_picks(picks).get(nkey)
+            if pick is not None:
+                return pick
+        current = next(
+            (
+                tx.get("from_team") or ""
+                for tx in txs
+                if normalize_name(tx.get("to_team") or "") == normalize_name(current)
+            ),
+            "",
+        )
+    return None
