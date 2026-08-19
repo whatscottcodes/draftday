@@ -29,6 +29,8 @@ export default function AdminPage({
   const [draftOrder, setDraftOrder] = useState<
     { position: number; team_id: number }[]
   >([]);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -223,16 +225,49 @@ export default function AdminPage({
     const fd = new FormData();
     fd.append("file", file);
     setError(null);
+    setImportStatus("⬆️ Uploading players…");
+    setImportBusy(true);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000);
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/draft/${token}/admin/import/csv`,
-        { method: "POST", body: fd, headers: adminPasscodeHeaders() },
+        {
+          method: "POST",
+          body: fd,
+          headers: adminPasscodeHeaders(),
+          signal: controller.signal,
+        },
       );
-      if (!res.ok) throw new Error((await res.json()).detail ?? "Import failed");
-      flash(true, "Players imported");
+      clearTimeout(timer);
+      if (!res.ok) {
+        let detail = "Import failed";
+        try {
+          detail = (await res.json()).detail ?? detail;
+        } catch {
+          /* ignore */
+        }
+        throw new Error(detail);
+      }
+      const body = await res.json().catch(() => ({}));
+      const count = typeof body.imported === "number" ? body.imported : null;
+      setImportStatus(
+        count !== null ? `✓ ${count} players imported` : "✓ Players imported",
+      );
       await loadConfig();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setImportStatus(
+          "⚠️ Upload timed out — the backend may still be waking up. Try again.",
+        );
+      } else {
+        setImportStatus(
+          `⚠️ ${e instanceof Error ? e.message : "Import failed"}`,
+        );
+      }
+    } finally {
+      setImportBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
     }
   }
 
@@ -275,16 +310,29 @@ export default function AdminPage({
 
   async function importCsvText() {
     if (!csvText.trim()) return;
+    setError(null);
+    setImportStatus("⬆️ Importing pasted CSV…");
+    setImportBusy(true);
     try {
-      await apiJson(`/api/draft/${token}/admin/import/text`, {
-        method: "POST",
-        body: JSON.stringify({ csv: csvText }),
-      });
-      flash(true, "Players imported");
+      const res = await apiJson<{ imported?: number }>(
+        `/api/draft/${token}/admin/import/text`,
+        {
+          method: "POST",
+          body: JSON.stringify({ csv: csvText }),
+        },
+      );
+      const count = typeof res.imported === "number" ? res.imported : null;
+      setImportStatus(
+        count !== null ? `✓ ${count} players imported` : "✓ Players imported",
+      );
       setCsvText("");
       await loadConfig();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
+      setImportStatus(
+        `⚠️ ${e instanceof Error ? e.message : "Import failed"}`,
+      );
+    } finally {
+      setImportBusy(false);
     }
   }
 
@@ -894,7 +942,8 @@ export default function AdminPage({
               ref={fileRef}
               type="file"
               accept=".csv"
-              className="text-xs font-mono text-slate-400 file:btn file:btn-secondary file:mr-2 file:text-xs"
+              disabled={importBusy}
+              className="text-xs font-mono text-slate-400 file:btn file:btn-secondary file:mr-2 file:text-xs disabled:opacity-50"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) importCsvFile(f);
@@ -904,6 +953,22 @@ export default function AdminPage({
               FantasyPros CSV or standard rankings export
             </span>
           </div>
+          {importBusy && (
+            <div className="text-xs font-mono font-bold text-yellow-300">
+              ⏳ WORKING… (waking the backend can take 30s on first try)
+            </div>
+          )}
+          {importStatus && (
+            <div
+              className={`text-xs font-mono font-bold ${
+                importStatus.startsWith("✓")
+                  ? "text-emerald-300"
+                  : "text-red-300"
+              }`}
+            >
+              {importStatus}
+            </div>
+          )}
 
           <textarea
             className="input h-24 font-mono text-xs"
