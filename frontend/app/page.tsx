@@ -3,7 +3,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { API_URL, apiJson } from "@/lib/api";
+import {
+  API_URL,
+  apiJson,
+  getAdminPasscode,
+  isUnauthorized,
+  setAdminPasscode,
+} from "@/lib/api";
 import type { LeagueSummary, LeagueStatus } from "@/lib/types";
 
 interface TeamRow {
@@ -26,12 +32,42 @@ export default function Home() {
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<CreatedLeague | null>(null);
   const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
+  const [passcodeInput, setPasscodeInput] = useState("");
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState(() => getAdminPasscode().length > 0);
+
+  const loadLeagues = useMemo(
+    () => async () => {
+      try {
+        setLeagues(await apiJson<LeagueSummary[]>("/api/leagues"));
+        setError(null);
+      } catch (e) {
+        if (isUnauthorized(e)) {
+          setUnlocked(false);
+          setError("Commissioner passcode required — unlock below.");
+        } else {
+          setError(e instanceof Error ? e.message : "Failed to load leagues");
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    apiJson<LeagueSummary[]>("/api/leagues")
-      .then(setLeagues)
-      .catch(() => setLeagues([]));
-  }, []);
+    if (unlocked) loadLeagues();
+  }, [unlocked, loadLeagues]);
+
+  function unlock() {
+    setUnlockError(null);
+    if (!passcodeInput.trim()) {
+      setUnlockError("Enter the commissioner passcode");
+      return;
+    }
+    setAdminPasscode(passcodeInput.trim());
+    setPasscodeInput("");
+    setUnlocked(true);
+    loadLeagues();
+  }
 
   const teamRows: TeamRow[] = useMemo(
     () =>
@@ -57,8 +93,14 @@ export default function Home() {
         }),
       });
       setCreated(res);
+      loadLeagues();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create league");
+      if (isUnauthorized(e)) {
+        setUnlocked(false);
+        setError("Commissioner passcode required — unlock below.");
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to create league");
+      }
     } finally {
       setCreating(false);
     }
@@ -70,7 +112,12 @@ export default function Home() {
       await apiJson(`/api/draft/${accessToken}/admin/delete`, { method: "DELETE" });
       setLeagues((prev) => prev.filter((l) => l.id !== id));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete draft");
+      if (isUnauthorized(e)) {
+        setUnlocked(false);
+        setError("Commissioner passcode required — unlock below.");
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to delete draft");
+      }
     }
   }
 
@@ -255,29 +302,65 @@ export default function Home() {
             </div>
           )}
 
-          <button
-            onClick={create}
-            disabled={creating}
-            className="w-full btn btn-gold py-2.5 text-sm tracking-wider flex items-center justify-center gap-2"
-          >
-            {creating ? (
-              <>
-                <span className="animate-spin">⏳</span>
-                <span>INITIALIZING LEAGUE DRAFT…</span>
-              </>
-            ) : (
-              <>
-                <span>⚡</span>
-                <span>INITIALIZE LEAGUE DRAFT</span>
-                <span>⚡</span>
-              </>
-            )}
-          </button>
+          {!unlocked ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  className="input flex-1"
+                  placeholder="Enter commissioner passcode to unlock…"
+                  value={passcodeInput}
+                  onChange={(e) => {
+                    setPasscodeInput(e.target.value);
+                    setUnlockError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") unlock();
+                  }}
+                />
+                <button
+                  onClick={unlock}
+                  className="btn btn-primary shrink-0"
+                  title="Unlock commissioner access"
+                >
+                  <span>🔓</span> UNLOCK
+                </button>
+              </div>
+              {unlockError && (
+                <div className="border-2 border-red-500 bg-red-950 p-2 text-red-200 text-xs font-mono font-bold">
+                  ⚠️ ERROR: {unlockError}
+                </div>
+              )}
+              <p className="text-[10px] text-slate-500 font-mono">
+                🔒 COMMISSIONER ONLY — REQUIRED TO CREATE A LEAGUE OR VIEW
+                ACTIVE DRAFTS.
+              </p>
+            </div>
+          ) : (
+            <button
+              onClick={create}
+              disabled={creating}
+              className="w-full btn btn-gold py-2.5 text-sm tracking-wider flex items-center justify-center gap-2"
+            >
+              {creating ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  <span>INITIALIZING LEAGUE DRAFT…</span>
+                </>
+              ) : (
+                <>
+                  <span>⚡</span>
+                  <span>INITIALIZE LEAGUE DRAFT</span>
+                  <span>⚡</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Existing Drafts Window */}
-      {leagues.length > 0 && (
+      {unlocked && leagues.length > 0 && (
         <div className="max-w-2xl w-full retro-panel border-2 border-t-slate-300 border-l-slate-300 border-b-black border-r-black bg-slate-950 p-0 shadow-[4px_4px_0px_#000000]">
           <div className="retro-titlebar-gold">
             <span className="flex items-center gap-1.5 font-black">

@@ -2,9 +2,10 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { apiJson, connectDraftSocket } from "@/lib/api";
+import { apiJson, connectDraftSocket, isUnauthorized } from "@/lib/api";
 import type { AdminConfig, DraftState } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
+import AdminUnlock from "@/components/AdminUnlock";
 
 export default function AdminPage({
   params,
@@ -17,6 +18,7 @@ export default function AdminPage({
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  const [locked, setLocked] = useState(false);
 
   const [keeperTeam, setKeeperTeam] = useState("");
   const [keeperPlayer, setKeeperPlayer] = useState("");
@@ -39,6 +41,10 @@ export default function AdminPage({
         setError(null);
         return;
       } catch (e) {
+        if (isUnauthorized(e)) {
+          setLocked(true);
+          return;
+        }
         if (attempt === 4) {
           setError(e instanceof Error ? e.message : "Failed to load");
         } else {
@@ -88,7 +94,11 @@ export default function AdminPage({
       if (reload) await loadConfig();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Action failed");
+      if (isUnauthorized(e)) {
+        setLocked(true);
+      } else {
+        setError(e instanceof Error ? e.message : "Action failed");
+      }
       return false;
     }
   }
@@ -96,6 +106,18 @@ export default function AdminPage({
   function flash(ok: boolean, text: string) {
     setNotice({ ok, text });
     setTimeout(() => setNotice(null), 4000);
+  }
+
+  if (locked) {
+    return (
+      <AdminUnlock
+        onUnlocked={() => {
+          setLocked(false);
+          setError(null);
+          loadConfig();
+        }}
+      />
+    );
   }
 
   if (error && !config) {

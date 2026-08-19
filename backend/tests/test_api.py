@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -27,8 +28,36 @@ def client():
             pass
 
     app.dependency_overrides[get_db] = override_get_db
+    os.environ["ADMIN_PASSCODE"] = "test-passcode"
+    with TestClient(
+        app, headers={"X-Admin-Passcode": "test-passcode"}
+    ) as c:
+        yield c, session
+    os.environ.pop("ADMIN_PASSCODE", None)
+    app.dependency_overrides.clear()
+    session.close()
+
+
+@pytest.fixture()
+def client_no_auth():
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    testing_session = sessionmaker(bind=engine, expire_on_commit=False)
+    session = testing_session()
+
+    def override_get_db():
+        try:
+            yield session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    os.environ["ADMIN_PASSCODE"] = "test-passcode"
     with TestClient(app) as c:
         yield c, session
+    os.environ.pop("ADMIN_PASSCODE", None)
     app.dependency_overrides.clear()
     session.close()
 
@@ -1280,3 +1309,53 @@ def test_keeper_admin_use_completed_draft(client):
     )
     assert r.status_code == 400
     assert "not a completed draft" in r.json()["detail"]
+
+
+def test_admin_gate_blocks_without_passcode(client_no_auth):
+    c, _ = client_no_auth
+    assert c.get("/api/leagues").status_code == 401
+    payload = {
+        "name": "Blocked",
+        "season": "2026",
+        "num_teams": 2,
+        "num_rounds": 2,
+        "teams": [{"name": "Team 1", "manager_name": ""}, {"name": "Team 2", "manager_name": ""}],
+    }
+    assert c.post("/api/leagues", json=payload).status_code == 401
+    assert c.get("/api/draft/whatever/admin/config").status_code == 401
+    assert c.post("/api/draft/whatever/admin/start").status_code == 401
+
+
+def test_admin_gate_rejects_wrong_passcode(client_no_auth):
+    c, _ = client_no_auth
+    r = c.get("/api/leagues", headers={"X-Admin-Passcode": "wrong"})
+    assert r.status_code == 401
+
+
+def test_admin_gate_lets_public_paths_through(client_no_auth):
+    c, _ = client_no_auth
+    data = {
+        "name": "Public",
+        "season": "2026",
+        "num_teams": 2,
+        "num_rounds": 2,
+        "teams": [{"name": "Team 1", "manager_name": ""}, {"name": "Team 2", "manager_name": ""}],
+    }
+    # Creating a league requires the passcode, so seed via the authed client path:
+    c.post("/api/leagues", json=data, headers={"X-Admin-Passcode": "test-passcode"})
+    assert c.get("/api/health").status_code == 200
+    assert c.get("/api/ping").status_code == 200
+
+
+def test_admin_gate_unconfigured_returns_503(client_no_auth, monkeypatch):
+    c, _ = client_no_auth
+    monkeypatch.delenv("ADMIN_PASSCODE", raising=False)
+    assert c.get("/api/leagues").status_code == 503
+
+
+def test_admin_gate_allows_authed_create(client):
+    c, _ = client
+    data = _create_league(c)
+    assert data["status"] == "SETUP"
+    token = data["access_token"]
+    assert c.get(f"/api/draft/{token}/admin/config").status_code == 200

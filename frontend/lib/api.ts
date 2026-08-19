@@ -3,16 +3,42 @@ import type { DraftState } from "./types";
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+const ADMIN_PASSCODE_KEY = "draftnight_admin_passcode";
+
+export function getAdminPasscode(): string {
+  if (typeof window === "undefined") return "";
+  return window.sessionStorage.getItem(ADMIN_PASSCODE_KEY) ?? "";
+}
+
+export function setAdminPasscode(passcode: string): void {
+  window.sessionStorage.setItem(ADMIN_PASSCODE_KEY, passcode);
+}
+
+export function clearAdminPasscode(): void {
+  window.sessionStorage.removeItem(ADMIN_PASSCODE_KEY);
+}
+
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export function wsUrl(token: string): string {
   const base = API_URL.replace(/^http/, "ws");
   return `${base}/api/draft/${token}/ws`;
 }
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const passcode = getAdminPasscode();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(passcode ? { "X-Admin-Passcode": passcode } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -29,9 +55,13 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* ignore */
     }
-    throw new Error(detail);
+    throw new ApiError(detail, res.status);
   }
   return res.json() as Promise<T>;
+}
+
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
 }
 
 export async function apiJsonRetry<T>(

@@ -1,13 +1,14 @@
 "use client";
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
-import { API_URL, apiJson } from "@/lib/api";
+import { API_URL, apiJson, isUnauthorized } from "@/lib/api";
 import type {
   KeeperPreviewCandidate,
   KeeperPreviewTeam,
   KeeperSetup,
 } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
+import AdminUnlock from "@/components/AdminUnlock";
 
 export default function KeeperAdminPage({
   params,
@@ -19,6 +20,7 @@ export default function KeeperAdminPage({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
 
   // Historical draft sources
   const [useDraftIds, setUseDraftIds] = useState({ previous: 0, prior: 0 });
@@ -85,7 +87,11 @@ export default function KeeperAdminPage({
       setYSeason(s.yahoo.season_id);
       setYWeek(s.yahoo.week ? String(s.yahoo.week) : "");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      if (isUnauthorized(e)) {
+        setLocked(true);
+      } else {
+        setError(e instanceof Error ? e.message : "Failed to load");
+      }
     }
   }, [token]);
 
@@ -447,6 +453,18 @@ export default function KeeperAdminPage({
         warning.startsWith(`${selectedTeam.team_name}:`),
       ) ?? []
     : [];
+
+  if (locked) {
+    return (
+      <AdminUnlock
+        onUnlocked={() => {
+          setLocked(false);
+          setError(null);
+          loadSetup();
+        }}
+      />
+    );
+  }
 
   if (error && !setup) {
     return (

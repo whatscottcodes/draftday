@@ -10,3 +10,5 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: ADMIN_PASSCODE
+        sync: false
