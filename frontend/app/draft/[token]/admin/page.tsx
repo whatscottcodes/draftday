@@ -939,9 +939,6 @@ export default function AdminPage({
                     {p.bye_week && (
                       <span className="text-slate-500">BYE {p.bye_week}</span>
                     )}
-                    {p.tier && (
-                      <span className="text-amber-400 font-bold">T{p.tier}</span>
-                    )}
                     {p.taken && <span className="text-emerald-400 font-bold">[TAKEN]</span>}
                   </li>
                 ))}

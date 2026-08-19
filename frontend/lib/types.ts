@@ -49,7 +49,6 @@ export interface AvailablePlayer {
   nfl_team: string;
   rank: number | null;
   bye_week?: string;
-  tier?: string;
 }
 
 export interface DraftState {
@@ -196,7 +195,6 @@ export interface AdminConfig {
     status: string;
     rank: number | null;
     adp: number | null;
-    tier?: string;
     bye_week?: string;
     upside?: string;
     bust?: string;

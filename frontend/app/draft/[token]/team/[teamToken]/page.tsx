@@ -608,7 +608,6 @@ export default function TeamPage({
                           <span>
                             {p.nfl_team ? p.nfl_team : ""}
                             {p.bye_week ? ` · BYE ${p.bye_week}` : ""}
-                            {p.tier ? ` · Tier ${p.tier}` : ""}
                           </span>
                         </div>
                       </div>

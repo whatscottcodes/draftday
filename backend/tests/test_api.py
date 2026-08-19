@@ -223,7 +223,7 @@ def test_fantasypros_csv_import(client):
     assert cmc["position"] == "RB"
     assert cmc["nfl_team"] == "SF"
     assert cmc["bye_week"] == "9"
-    assert cmc["tier"] == "1"
+    assert "tier" not in cmc
     hill = by_name["Tyreek Hill"]
     assert hill["rank"] == 3
     assert hill["position"] == "WR"

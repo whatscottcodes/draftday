@@ -273,7 +273,6 @@ def admin_config(token: str, db: Session = Depends(get_db)):
                 "status": p.status,
                 "rank": ranks[p.id].rank if p.id in ranks else None,
                 "adp": ranks[p.id].adp if p.id in ranks else None,
-                "tier": (p.extra or {}).get("tier"),
                 "bye_week": (p.extra or {}).get("bye_week"),
                 "upside": (p.extra or {}).get("upside"),
                 "bust": (p.extra or {}).get("bust"),
@@ -458,7 +457,7 @@ def _norm_key(value: str) -> str:
 
 
 def _normalize_position(value: str) -> str:
-    """Strip a trailing rank/tier number from a position.
+    """Strip a trailing in-position rank number from a position.
 
     FantasyPros exports positions like "RB1" or "WR12" (position plus
     in-position rank); position filters expect just "RB" or "WR".
@@ -470,7 +469,7 @@ def parse_players_csv(raw: str) -> list[PlayerImportRow]:
     """Parse a player/ranking CSV.
 
     Auto-detects the FantasyPros export format
-    (RK,TIERS,PLAYER NAME,TEAM,POS,BYE WEEK,UPSIDE,BUST,SOS SEASON,ECR VS. ADP)
+    (RK,PLAYER NAME,TEAM,POS,BYE WEEK,UPSIDE,BUST,SOS SEASON,ECR VS. ADP)
     as well as the generic format
     (player_id,name,position,nfl_team,status,rank,adp).
     """
@@ -509,7 +508,6 @@ def parse_players_csv(raw: str) -> list[PlayerImportRow]:
                     nfl_team=(row.get(keys.get("team", "")) or "").strip().upper(),
                     status="available",
                     rank=rk,
-                    tier=(row.get(keys.get("tiers", "")) or "").strip(),
                     bye_week=(row.get(keys.get("bye_week", "")) or "").strip(),
                     upside=(row.get(keys.get("upside", "")) or "").strip(),
                     bust=(row.get(keys.get("bust", "")) or "").strip(),
@@ -586,7 +584,6 @@ def _upsert_player(db: Session, league: League, row: PlayerImportRow) -> None:
     extra = {
         key: value
         for key, value in {
-            "tier": row.tier,
             "bye_week": row.bye_week,
             "upside": row.upside,
             "bust": row.bust,
