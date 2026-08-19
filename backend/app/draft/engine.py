@@ -81,6 +81,34 @@ def slot_status(db: Session, slot: DraftSlot) -> str:
     return "OPEN"
 
 
+def bulk_slot_statuses(db: Session, slots: list[DraftSlot]) -> dict[int, str]:
+    """Status for many slots using a bounded number of queries.
+
+    Equivalent to calling slot_status() per slot, but avoids the N+1 query
+    pattern that dominates board/admin rendering on remote databases.
+    """
+    if not slots:
+        return {}
+    slot_ids = [s.id for s in slots]
+    picked = {
+        p.draft_slot_id
+        for p in db.scalars(select(Pick).where(Pick.draft_slot_id.in_(slot_ids)))
+    }
+    keeper_keys = {
+        (k.round, k.team_id)
+        for k in db.scalars(select(Keeper).where(Keeper.league_id == slots[0].league_id))
+    }
+    statuses: dict[int, str] = {}
+    for s in slots:
+        if s.id in picked:
+            statuses[s.id] = "FILLED"
+        elif (s.round, s.drafting_team_id) in keeper_keys:
+            statuses[s.id] = "KEEPER"
+        else:
+            statuses[s.id] = "OPEN"
+    return statuses
+
+
 def get_league_by_token(db: Session, token: str) -> League | None:
     return db.scalar(select(League).where(League.access_token == token))
 

@@ -204,6 +204,7 @@ def admin_config(token: str, db: Session = Depends(get_db)):
         p.player_id
         for p in db.scalars(select(Pick).where(Pick.league_id == league.id))
     }
+    slot_statuses = engine.bulk_slot_statuses(db, slots)
     errors, warnings = validation.validate_draft_configuration(db, league)
 
     return {
@@ -233,7 +234,7 @@ def admin_config(token: str, db: Session = Depends(get_db)):
                 "round": s.round,
                 "original_team_id": s.original_team_id,
                 "drafting_team_id": s.drafting_team_id,
-                "status": engine.slot_status(db, s),
+                "status": slot_statuses[s.id],
             }
             for s in slots
         ],

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..models import (
     DEFAULT_ROSTER_SLOTS,
@@ -11,6 +11,7 @@ from ..models import (
     Keeper,
     KeeperCandidate,
     League,
+    LeagueStatus,
     Pick,
     Team,
 )
@@ -64,17 +65,8 @@ def assign_roster(
     return roster, remaining
 
 
-def _slot_dict(db: Session, slot: DraftSlot, num_teams: int) -> dict:
-    pick = db.scalar(select(Pick).where(Pick.draft_slot_id == slot.id))
-    keeper = None
-    if pick is None:
-        keeper = db.scalar(
-            select(Keeper).where(
-                Keeper.league_id == slot.league_id,
-                Keeper.round == slot.round,
-                Keeper.team_id == slot.drafting_team_id,
-            )
-        )
+def _slot_dict(slot: DraftSlot, num_teams: int, pick: Pick | None, keeper: Keeper | None) -> dict:
+    status = "FILLED" if pick is not None else ("KEEPER" if keeper is not None else "OPEN")
     return {
         "slot_id": slot.id,
         "pick_number": slot.pick_number,
@@ -82,7 +74,7 @@ def _slot_dict(db: Session, slot: DraftSlot, num_teams: int) -> dict:
         "round_pick": ((slot.pick_number - 1) % num_teams) + 1,
         "original_team_id": slot.original_team_id,
         "drafting_team_id": slot.drafting_team_id,
-        "status": engine.slot_status(db, slot),
+        "status": status,
         "keeper_round": keeper.round if keeper else None,
     }
 
@@ -114,6 +106,7 @@ def build_draft_state(db: Session, league: League) -> dict:
             select(Pick)
             .where(Pick.league_id == league.id)
             .join(DraftSlot)
+            .options(selectinload(Pick.team), selectinload(Pick.player), selectinload(Pick.slot))
             .order_by(DraftSlot.pick_number)
         )
     )
@@ -122,6 +115,9 @@ def build_draft_state(db: Session, league: League) -> dict:
     for p in picks:
         roster_counts[p.team_id] = roster_counts.get(p.team_id, 0) + 1
 
+    keepers = list(db.scalars(select(Keeper).where(Keeper.league_id == league.id)))
+    keeper_by_key = {(k.round, k.team_id): k for k in keepers}
+
     slots = db.scalars(
         select(DraftSlot)
         .where(DraftSlot.league_id == league.id)
@@ -129,8 +125,11 @@ def build_draft_state(db: Session, league: League) -> dict:
     )
     board = []
     for slot in slots:
-        entry = _slot_dict(db, slot, league.num_teams)
         pick = pick_by_slot.get(slot.id)
+        keeper = None
+        if pick is None:
+            keeper = keeper_by_key.get((slot.round, slot.drafting_team_id))
+        entry = _slot_dict(slot, league.num_teams, pick, keeper)
         if pick is not None:
             entry["player_id"] = pick.player_id
             entry["player_name"] = pick.player.name
@@ -139,7 +138,12 @@ def build_draft_state(db: Session, league: League) -> dict:
             entry["pick_type"] = pick.pick_type
         board.append(entry)
 
-    current = engine.current_slot(db, league)
+    current = None
+    if league.status == LeagueStatus.LIVE:
+        for slot in board:
+            if slot["status"] == "OPEN":
+                current = slot
+                break
     recent = picks[-8:][::-1]
 
     all_available = engine.available_players(db, league)
@@ -165,7 +169,7 @@ def build_draft_state(db: Session, league: League) -> dict:
         "num_teams": league.num_teams,
         "num_rounds": league.num_rounds,
         "status": league.status,
-        "current_slot": _slot_dict(db, current, league.num_teams) if current else None,
+        "current_slot": current,
         "teams": [
             {
                 "id": t.id,
