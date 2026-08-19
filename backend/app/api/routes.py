@@ -413,8 +413,7 @@ def import_players_json(
     if league.status != LeagueStatus.SETUP:
         raise HTTPException(status_code=400, detail="Players can only be imported during setup")
     _replace_player_pool(db, league)
-    for row in body.players:
-        _upsert_player(db, league, row)
+    _bulk_import_players(db, league, body.players)
     _commit(db)
     _schedule_broadcast(league)
     return {"ok": True, "imported": len(body.players)}
@@ -432,8 +431,7 @@ def import_players_csv(
     if not rows:
         raise HTTPException(status_code=400, detail="Empty CSV file")
     _replace_player_pool(db, league)
-    for row in rows:
-        _upsert_player(db, league, row)
+    _bulk_import_players(db, league, rows)
     _commit(db)
     _schedule_broadcast(league)
     return {"ok": True, "imported": len(rows)}
@@ -450,8 +448,7 @@ def import_players_text(
     if not rows:
         raise HTTPException(status_code=400, detail="Empty CSV text")
     _replace_player_pool(db, league)
-    for row in rows:
-        _upsert_player(db, league, row)
+    _bulk_import_players(db, league, rows)
     _commit(db)
     _schedule_broadcast(league)
     return {"ok": True, "imported": len(rows)}
@@ -572,69 +569,59 @@ def _float_or_none(value: str | None) -> float | None:
         return None
 
 
-def _upsert_player(db: Session, league: League, row: PlayerImportRow) -> None:
-    existing = None
-    if row.player_id:
-        existing = db.scalar(
-            select(Player).where(
-                Player.league_id == league.id, Player.player_id == row.player_id
-            )
-        )
-    if existing is None:
-        existing = db.scalar(
-            select(Player).where(
-                Player.league_id == league.id, Player.name == row.name
-            )
-        )
-    if existing is None:
-        existing = Player(
+def _bulk_import_players(
+    db: Session, league: League, rows: list[PlayerImportRow]
+) -> int:
+    """Insert a full player pool after _replace_player_pool cleared it.
+
+    Uses add_all + batched flushes instead of per-row round trips, and
+    dedupes on (player_id, name) within the upload so a malformed CSV
+    can't trip the unique constraint.
+    """
+    seen_ids: set[str] = set()
+    seen_names: set[str] = set()
+    players: list[Player] = []
+    pending: list[tuple[Player, int | None, float | None]] = []
+    for row in rows:
+        name = (row.name or "").strip()
+        pid = (row.player_id or "").strip() or f"auto-{secrets.token_hex(4)}"
+        if pid.casefold() in seen_ids or name.casefold() in seen_names:
+            continue
+        seen_ids.add(pid.casefold())
+        seen_names.add(name.casefold())
+        player = Player(
             league_id=league.id,
-            player_id=row.player_id or f"auto-{secrets.token_hex(4)}",
-            name=row.name,
+            player_id=pid,
+            name=name,
             position=_normalize_position(row.position),
             nfl_team=row.nfl_team,
             status=row.status,
         )
-        db.add(existing)
-        db.flush()
-    else:
-        existing.name = row.name
-        existing.position = _normalize_position(row.position) or existing.position
-        existing.nfl_team = row.nfl_team or existing.nfl_team
-        existing.status = row.status or existing.status
-    extra = {
-        key: value
-        for key, value in {
-            "bye_week": row.bye_week,
-            "upside": row.upside,
-            "bust": row.bust,
-            "sos_season": row.sos_season,
-            "ecr_vs_adp": row.ecr_vs_adp,
-        }.items()
-        if value not in (None, "")
-    }
-    if extra:
-        merged = dict(existing.extra or {})
-        merged.update(extra)
-        existing.extra = merged
-    if row.rank is not None:
-        ranking = db.scalar(
-            select(Ranking).where(
-                Ranking.league_id == league.id, Ranking.player_id == existing.id
-            )
-        )
-        if ranking is None:
-            db.add(
-                Ranking(
-                    league_id=league.id,
-                    player_id=existing.id,
-                    rank=row.rank,
-                    adp=row.adp,
-                )
-            )
-        else:
-            ranking.rank = row.rank
-            ranking.adp = row.adp if row.adp is not None else ranking.adp
+        extra = {
+            key: value
+            for key, value in {
+                "bye_week": row.bye_week,
+                "upside": row.upside,
+                "bust": row.bust,
+                "sos_season": row.sos_season,
+                "ecr_vs_adp": row.ecr_vs_adp,
+            }.items()
+            if value not in (None, "")
+        }
+        if extra:
+            player.extra = extra
+        players.append(player)
+        pending.append((player, row.rank, row.adp))
+    db.add_all(players)
+    db.flush()
+    rankings = [
+        Ranking(league_id=league.id, player_id=player.id, rank=rank, adp=adp)
+        for player, rank, adp in pending
+        if rank is not None
+    ]
+    db.add_all(rankings)
+    db.flush()
+    return len(players)
 
 
 @router.post("/draft/{token}/admin/validate", response_model=ValidationReport)

@@ -228,7 +228,7 @@ export default function AdminPage({
     setImportStatus("⬆️ Uploading players…");
     setImportBusy(true);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60000);
+    const timer = setTimeout(() => controller.abort(), 120000);
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/draft/${token}/admin/import/csv`,
@@ -258,7 +258,7 @@ export default function AdminPage({
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") {
         setImportStatus(
-          "⚠️ Upload timed out — the backend may still be waking up. Try again.",
+          "⚠️ Import timed out — the server is still processing. Wait a moment and refresh before trying again.",
         );
       } else {
         setImportStatus(
