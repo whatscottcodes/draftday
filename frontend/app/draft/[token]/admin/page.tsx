@@ -2,7 +2,7 @@
 
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { apiJson, connectDraftSocket, getAdminPasscode, isUnauthorized } from "@/lib/api";
+import { apiJson, adminPasscodeHeaders, connectDraftSocket, isUnauthorized } from "@/lib/api";
 import type { AdminConfig, DraftState } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
 import AdminUnlock from "@/components/AdminUnlock";
@@ -226,13 +226,7 @@ export default function AdminPage({
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/draft/${token}/admin/import/csv`,
-        {
-          method: "POST",
-          body: fd,
-          headers: getAdminPasscode()
-            ? { "X-Admin-Passcode": getAdminPasscode() }
-            : {},
-        },
+        { method: "POST", body: fd, headers: adminPasscodeHeaders() },
       );
       if (!res.ok) throw new Error((await res.json()).detail ?? "Import failed");
       flash(true, "Players imported");
@@ -249,13 +243,7 @@ export default function AdminPage({
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/draft/${token}/admin/import/keepers`,
-        {
-          method: "POST",
-          body: fd,
-          headers: getAdminPasscode()
-            ? { "X-Admin-Passcode": getAdminPasscode() }
-            : {},
-        },
+        { method: "POST", body: fd, headers: adminPasscodeHeaders() },
       );
       const body = await res.json();
       if (!res.ok) throw new Error(body.detail ?? "Import failed");

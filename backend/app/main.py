@@ -3,6 +3,7 @@ import hmac
 import os
 import re
 from contextlib import asynccontextmanager
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,8 +54,10 @@ async def admin_gate(request: Request, call_next):
             503,
             "ADMIN_PASSCODE is not configured on the server",
         )
-    provided = request.headers.get("X-Admin-Passcode", "")
-    if not provided or not hmac.compare_digest(provided, expected):
+    provided = unquote(request.headers.get("X-Admin-Passcode", ""))
+    if not provided or not hmac.compare_digest(
+        provided.encode("utf-8"), expected.encode("utf-8")
+    ):
         return _gate_response(request, 401, "Commissioner passcode required")
     return await call_next(request)
 

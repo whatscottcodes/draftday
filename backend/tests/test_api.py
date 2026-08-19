@@ -1496,6 +1496,14 @@ def test_admin_gate_rejects_wrong_passcode(client_no_auth):
     assert r.headers.get("access-control-allow-credentials") == "true"
 
 
+def test_admin_gate_accepts_percent_encoded_unicode_passcode(client_no_auth, monkeypatch):
+    c, _ = client_no_auth
+    monkeypatch.setenv("ADMIN_PASSCODE", "pässwörd🔥")
+    # Frontend sends encodeURIComponent(...); backend must unquote before comparing.
+    encoded = "p%C3%A4ssw%C3%B6rd%F0%9F%94%A5"
+    assert c.get("/api/leagues", headers={"X-Admin-Passcode": encoded}).status_code == 200
+
+
 def test_admin_gate_lets_public_paths_through(client_no_auth):
     c, _ = client_no_auth
     data = {

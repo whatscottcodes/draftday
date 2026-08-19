@@ -18,6 +18,13 @@ export function clearAdminPasscode(): void {
   window.sessionStorage.removeItem(ADMIN_PASSCODE_KEY);
 }
 
+export function adminPasscodeHeaders(): Record<string, string> {
+  const passcode = getAdminPasscode();
+  if (!passcode) return {};
+  // Headers must be ISO-8859-1; percent-encode UTF-8 so any passcode works.
+  return { "X-Admin-Passcode": encodeURIComponent(passcode) };
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -33,12 +40,11 @@ export function wsUrl(token: string): string {
 }
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const passcode = getAdminPasscode();
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(passcode ? { "X-Admin-Passcode": passcode } : {}),
+      ...adminPasscodeHeaders(),
       ...(init?.headers ?? {}),
     },
   });
