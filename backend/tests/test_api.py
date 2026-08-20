@@ -731,6 +731,55 @@ def test_keeper_slot_marking_with_traded_picks(client):
     assert keeper_rounds == [5, 5]
 
 
+def test_keeper_bumps_to_earlier_round_when_pick_traded(client):
+    c, session = client
+    payload = {
+        "name": "Traded Away",
+        "season": "2026",
+        "num_teams": 4,
+        "num_rounds": 12,
+        "teams": [{"name": f"Team {i}", "manager_name": f"Mgr {i}"} for i in range(1, 5)],
+    }
+    data = c.post("/api/leagues", json=payload).json()
+    token = data["access_token"]
+    team1_id = data["teams"][0]["id"]
+    team2_id = data["teams"][1]["id"]
+    csv_text = (
+        "player_id,name,position,nfl_team,rank,adp\n"
+        "p1,Alpha RB,RB,NFL,1,1.0\n"
+    )
+    assert c.post(f"/api/draft/{token}/admin/import/text", json={"csv": csv_text}).status_code == 200
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    pids = sorted(p["id"] for p in players)
+
+    # Team 1 trades away its round-5 pick but wants to keep a round-5 player.
+    league = session.get(League, data["id"])
+    round5_team1 = next(
+        s for s in league.slots if s.round == 5 and s.drafting_team_id == team1_id
+    )
+    round5_team1.drafting_team_id = team2_id
+    session.flush()
+
+    assert (
+        c.post(
+            f"/api/draft/{token}/admin/keepers",
+            json={"team_id": team1_id, "player_id": pids[0], "round": 5},
+        ).status_code
+        == 200
+    )
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    keeper = next(k for k in cfg["keepers"] if k["team_id"] == team1_id)
+    # No round-5 pick owned, so the keeper costs the next earlier round instead.
+    assert keeper["round"] == 4
+    round4_slots = [
+        s
+        for s in cfg["slots"]
+        if s["round"] == 4 and s["drafting_team_id"] == team1_id
+    ]
+    assert len(round4_slots) == 1
+    assert round4_slots[0]["status"] == "KEEPER"
+
+
 def test_team_self_select_keepers_and_lock(client):
     c, _ = client
     payload = {
