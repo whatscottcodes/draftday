@@ -128,8 +128,9 @@ def build_draft_state(db: Session, league: League) -> dict:
         roster_counts[p.team_id] = roster_counts.get(p.team_id, 0) + 1
 
     keepers = list(db.scalars(select(Keeper).where(Keeper.league_id == league.id)))
-    keeper_eff = engine.effective_keeper_rounds(db, league)
-    keeper_by_key = {(keeper_eff[k.id], k.team_id): k for k in keepers}
+    keeper_by_id = {k.id: k for k in keepers}
+    keeper_slot_map = engine.keeper_slot_assignments(db, league)
+    slot_owner = {slot.id: keeper_id for keeper_id, slot in keeper_slot_map.items()}
 
     slots = db.scalars(
         select(DraftSlot)
@@ -141,7 +142,7 @@ def build_draft_state(db: Session, league: League) -> dict:
         pick = pick_by_slot.get(slot.id)
         keeper = None
         if pick is None:
-            keeper = keeper_by_key.get((slot.round, slot.drafting_team_id))
+            keeper = keeper_by_id.get(slot_owner.get(slot.id))
         entry = _slot_dict(slot, league.num_teams, pick, keeper)
         if pick is not None:
             entry["player_id"] = pick.player_id

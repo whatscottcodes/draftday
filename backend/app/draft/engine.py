@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import Counter
+
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
@@ -113,12 +115,8 @@ def slot_status(db: Session, slot: DraftSlot) -> str:
         return "FILLED"
     league = db.get(League, slot.league_id)
     if league is not None:
-        keepers = list(
-            db.scalars(select(Keeper).where(Keeper.league_id == league.id))
-        )
-        keeper_eff = effective_keeper_rounds(db, league)
-        keeper_keys = {(keeper_eff[k.id], k.team_id) for k in keepers}
-        if (slot.round, slot.drafting_team_id) in keeper_keys:
+        keeper_slots = keeper_slot_assignments(db, league)
+        if slot.id in {s.id for s in keeper_slots.values()}:
             return "KEEPER"
     return "OPEN"
 
@@ -136,19 +134,17 @@ def bulk_slot_statuses(db: Session, slots: list[DraftSlot]) -> dict[int, str]:
         p.draft_slot_id
         for p in db.scalars(select(Pick).where(Pick.draft_slot_id.in_(slot_ids)))
     }
-    keeper_keys: set[tuple[int, int]] = set()
+    keeper_slot_ids: set[int] = set()
     league = db.get(League, slots[0].league_id)
     if league is not None:
-        keepers = list(
-            db.scalars(select(Keeper).where(Keeper.league_id == league.id))
-        )
-        keeper_eff = effective_keeper_rounds(db, league)
-        keeper_keys = {(keeper_eff[k.id], k.team_id) for k in keepers}
+        keeper_slot_ids = {
+            s.id for s in keeper_slot_assignments(db, league).values()
+        }
     statuses: dict[int, str] = {}
     for s in slots:
         if s.id in picked:
             statuses[s.id] = "FILLED"
-        elif (s.round, s.drafting_team_id) in keeper_keys:
+        elif s.id in keeper_slot_ids:
             statuses[s.id] = "KEEPER"
         else:
             statuses[s.id] = "OPEN"
@@ -261,14 +257,17 @@ def remove_keeper(db: Session, league: League, keeper_id: int) -> None:
 
 
 def effective_keeper_rounds(db: Session, league: League) -> dict[int, int]:
-    """Distinct keeper cost rounds per team, computed from nominal rounds.
+    """Distinct keeper cost rounds per team, computed from nominal rounds and
+    the draft picks the team actually owns.
 
-    When a team keeps several players at the same cost round (e.g. three at
-    round 11), they are spread across consecutive earlier rounds so each has a
-    different cost (9, 10, 11). Within a collision the better-ranked player
-    keeps the original (cheaper) round, tiebroken by name. Returns a map of
-    keeper_id -> effective round. Deterministic and independent of the order
-    the keepers were selected.
+    A keeper keeps its nominal round as long as the team owns enough picks in
+    that round (e.g. two round-5 keepers stay at round 5 when the team owns two
+    round-5 picks). Only when more keepers collide than the team has picks in a
+    round do the overflow keepers spread to earlier rounds the team owns picks
+    in (e.g. three round-11 keepers with one round-11 pick become 9, 10, 11).
+    Within a collision the better-ranked player keeps the original (cheaper)
+    round, tiebroken by name. Returns a map of keeper_id -> effective round.
+    Deterministic and independent of the order the keepers were selected.
     """
     keepers = list(
         db.scalars(select(Keeper).where(Keeper.league_id == league.id))
@@ -283,11 +282,16 @@ def effective_keeper_rounds(db: Session, league: League) -> dict[int, int]:
         )
     ):
         ranks[pid] = rid
+    capacity: Counter = Counter()
+    for s in db.scalars(
+        select(DraftSlot).where(DraftSlot.league_id == league.id)
+    ):
+        capacity[(s.drafting_team_id, s.round)] += 1
     by_team: dict[int, list[Keeper]] = {}
     for k in keepers:
         by_team.setdefault(k.team_id, []).append(k)
     result: dict[int, int] = {}
-    for team_keepers in by_team.values():
+    for team_id, team_keepers in by_team.items():
         ordered = sorted(
             team_keepers,
             key=lambda k: (
@@ -296,16 +300,70 @@ def effective_keeper_rounds(db: Session, league: League) -> dict[int, int]:
                 (k.player.name or "").casefold(),
             ),
         )
-        used: set[int] = set()
+        used: Counter = Counter()
         for k in ordered:
-            final = k.round
-            while final in used and final > 1:
-                final -= 1
-            if final in used:
-                result[k.id] = k.round
-            else:
-                result[k.id] = final
-                used.add(final)
+            nominal = k.round
+            if not (1 <= nominal <= league.num_rounds):
+                result[k.id] = nominal
+                continue
+            if used[nominal] < capacity.get((team_id, nominal), 0):
+                result[k.id] = nominal
+                used[nominal] += 1
+                continue
+            placed = False
+            for r2 in range(nominal - 1, 0, -1):
+                if used[r2] < capacity.get((team_id, r2), 0):
+                    result[k.id] = r2
+                    used[r2] += 1
+                    placed = True
+                    break
+            if not placed:
+                result[k.id] = nominal
+                used[nominal] += 1
+    return result
+
+
+def keeper_slot_assignments(
+    db: Session, league: League
+) -> dict[int, DraftSlot]:
+    """Map each keeper to the specific draft slot it consumes.
+
+    A keeper uses one of its team's picks in the keeper's effective round,
+    taking the latest (highest pick number) available slot first. Only these
+    slots are shown as KEEPER on the board, so a team with two round-5 picks
+    and one round-5 keeper has exactly one slot marked.
+    """
+    keepers = list(
+        db.scalars(select(Keeper).where(Keeper.league_id == league.id))
+    )
+    if not keepers:
+        return {}
+    keeper_eff = effective_keeper_rounds(db, league)
+    slots = list(
+        db.scalars(
+            select(DraftSlot)
+            .where(DraftSlot.league_id == league.id)
+            .order_by(DraftSlot.pick_number.desc())
+        )
+    )
+    slots_by_key: dict[tuple[int, int], list[DraftSlot]] = {}
+    for s in slots:
+        slots_by_key.setdefault((s.round, s.drafting_team_id), []).append(s)
+    result: dict[int, DraftSlot] = {}
+    used: Counter = Counter()
+    for k in sorted(
+        keepers,
+        key=lambda k: (
+            keeper_eff.get(k.id, k.round),
+            (k.player.name or "").casefold(),
+        ),
+    ):
+        kround = keeper_eff.get(k.id, k.round)
+        pool = slots_by_key.get((kround, k.team_id), [])
+        idx = used[(kround, k.team_id)]
+        if idx < len(pool):
+            result[k.id] = pool[idx]
+            used[(kround, k.team_id)] += 1
     return result
 
 

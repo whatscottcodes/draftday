@@ -661,6 +661,76 @@ def test_keeper_rounds_rebalanced_on_read(client):
     assert len(cfg["keepers"]) == 3
 
 
+def test_keeper_slot_marking_with_traded_picks(client):
+    c, session = client
+    payload = {
+        "name": "Traded Picks",
+        "season": "2026",
+        "num_teams": 4,
+        "num_rounds": 12,
+        "teams": [{"name": f"Team {i}", "manager_name": f"Mgr {i}"} for i in range(1, 5)],
+    }
+    data = c.post("/api/leagues", json=payload).json()
+    token = data["access_token"]
+    team1_id = data["teams"][0]["id"]
+    team2_id = data["teams"][1]["id"]
+    csv_text = (
+        "player_id,name,position,nfl_team,rank,adp\n"
+        "p1,Alpha RB,RB,NFL,1,1.0\n"
+        "p2,Beta RB,RB,NFL,2,2.0\n"
+    )
+    assert c.post(f"/api/draft/{token}/admin/import/text", json={"csv": csv_text}).status_code == 200
+    players = c.get(f"/api/draft/{token}/admin/config").json()["players"]
+    pids = sorted(p["id"] for p in players)
+
+    # Trade: Team 1 now owns Team 2's round-5 pick, so it has two round-5 picks.
+    league = session.get(League, data["id"])
+    round5_team2 = next(
+        s for s in league.slots if s.round == 5 and s.drafting_team_id == team2_id
+    )
+    round5_team2.drafting_team_id = team1_id
+    session.flush()
+
+    # One round-5 keeper: only the latest round-5 slot should be marked KEEPER.
+    assert (
+        c.post(
+            f"/api/draft/{token}/admin/keepers",
+            json={"team_id": team1_id, "player_id": pids[0], "round": 5},
+        ).status_code
+        == 200
+    )
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    round5_slots = [
+        s for s in cfg["slots"] if s["round"] == 5 and s["drafting_team_id"] == team1_id
+    ]
+    assert len(round5_slots) == 2
+    keeper_round5 = [s for s in round5_slots if s["status"] == "KEEPER"]
+    assert len(keeper_round5) == 1
+    assert keeper_round5[0]["pick_number"] == max(s["pick_number"] for s in round5_slots)
+
+    # Second round-5 keeper: both round-5 picks can be keepers, no bump needed.
+    assert (
+        c.post(
+            f"/api/draft/{token}/admin/keepers",
+            json={"team_id": team1_id, "player_id": pids[1], "round": 5},
+        ).status_code
+        == 200
+    )
+    cfg = c.get(f"/api/draft/{token}/admin/config").json()
+    keeper_round5 = [
+        s
+        for s in cfg["slots"]
+        if s["round"] == 5
+        and s["drafting_team_id"] == team1_id
+        and s["status"] == "KEEPER"
+    ]
+    assert len(keeper_round5) == 2
+    keeper_rounds = sorted(
+        k["round"] for k in cfg["keepers"] if k["team_id"] == team1_id
+    )
+    assert keeper_rounds == [5, 5]
+
+
 def test_team_self_select_keepers_and_lock(client):
     c, _ = client
     payload = {

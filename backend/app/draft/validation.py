@@ -96,20 +96,16 @@ def validate_draft_configuration(
             seen_players[keeper.player_id] = keeper
 
     # Keeper rounds valid and keeper team owns a slot in that round.
-    slots_by_round_team: dict[tuple[int, int], DraftSlot] = {
-        (s.round, s.drafting_team_id): s for s in slots
-    }
-    keeper_rounds = engine.effective_keeper_rounds(db, league)
+    keeper_slots = engine.keeper_slot_assignments(db, league)
     for keeper in keepers:
-        kround = keeper_rounds.get(keeper.id, keeper.round)
-        if not (1 <= kround <= league.num_rounds):
+        if not (1 <= keeper.round <= league.num_rounds):
             errors.append(
                 {
                     "severity": "error",
                     "code": "keeper_round",
                     "message": (
                         f"{keeper.team.name} keeper {keeper.player.name} has "
-                        f"invalid round {kround}."
+                        f"invalid round {keeper.round}."
                     ),
                 }
             )
@@ -122,14 +118,15 @@ def validate_draft_configuration(
                     "message": f"Keeper references an unknown player (id {keeper.player_id}).",
                 }
             )
-        if (kround, keeper.team_id) not in slots_by_round_team:
+        slot = keeper_slots.get(keeper.id)
+        if slot is None or slot.drafting_team_id != keeper.team_id:
             errors.append(
                 {
                     "severity": "error",
                     "code": "keeper_no_slot",
                     "message": (
                         f"{keeper.team.name} keeps {keeper.player.name} in round "
-                        f"{kround} but owns no draft slot in that round "
+                        f"{keeper.round} but owns no draft slot in that round "
                         "(pick was traded away or does not exist)."
                     ),
                 }
@@ -184,20 +181,17 @@ def start_draft(db: Session, league: League) -> None:
         msgs = "; ".join(e["message"] for e in errors)
         raise ValueError(f"Draft configuration is invalid: {msgs}")
 
-    slots_by_round_team: dict[tuple[int, int], DraftSlot] = {
-        (s.round, s.drafting_team_id): s
-        for s in db.scalars(
-            select(DraftSlot).where(DraftSlot.league_id == league.id)
-        )
-    }
+    keeper_slots = engine.keeper_slot_assignments(db, league)
     keepers = list(
         db.scalars(select(Keeper).where(Keeper.league_id == league.id))
     )
-    keeper_rounds = engine.effective_keeper_rounds(db, league)
     for keeper in keepers:
-        slot = slots_by_round_team[
-            (keeper_rounds.get(keeper.id, keeper.round), keeper.team_id)
-        ]
+        slot = keeper_slots.get(keeper.id)
+        if slot is None:
+            raise ValueError(
+                f"{keeper.team.name} keeper {keeper.player.name} has no "
+                "available draft slot."
+            )
         existing = db.scalar(
             select(Pick).where(
                 Pick.draft_slot_id == slot.id,
