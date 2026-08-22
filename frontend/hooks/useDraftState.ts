@@ -10,37 +10,49 @@ export function useDraftState(token: string) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let ws: WebSocket;
+    let ws: WebSocket | null = null;
     let closed = false;
 
-    apiJsonRetry<DraftState>(`/api/draft/${token}/display`)
-      .then((s) => {
-        setState(s);
-        setError(null);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
+    const fetchDisplay = () => {
+      apiJsonRetry<DraftState>(`/api/draft/${token}/display`)
+        .then((s) => {
+          if (!closed) {
+            setState(s);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (!closed) setError(e instanceof Error ? e.message : "Failed to load");
+        });
+    };
+
+    fetchDisplay();
 
     const openSocket = () => {
       ws = connectDraftSocket(
         token,
         (s) => {
-          setState(s);
-          setError(null);
+          if (!closed) {
+            setState(s);
+            setError(null);
+          }
         },
         setConnected,
       );
     };
     openSocket();
 
-    const retry = setInterval(() => {
-      if (!closed && ws.readyState === WebSocket.CLOSED) {
+    const interval = setInterval(() => {
+      if (closed) return;
+      if (!ws || ws.readyState === WebSocket.CLOSED) {
         openSocket();
       }
-    }, 3000);
+      fetchDisplay();
+    }, 4000);
 
     return () => {
       closed = true;
-      clearInterval(retry);
+      clearInterval(interval);
       ws?.close();
     };
   }, [token]);

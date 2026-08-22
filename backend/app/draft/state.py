@@ -108,7 +108,11 @@ def _pick_dict(db: Session, pick: Pick) -> dict:
     }
 
 
-def build_draft_state(db: Session, league: League) -> dict:
+def build_draft_state(
+    db: Session,
+    league: League,
+    all_available: list[tuple[Player, int | None]] | None = None,
+) -> dict:
     teams = sorted(
         db.scalars(select(Team).where(Team.league_id == league.id)),
         key=lambda t: t.draft_position,
@@ -127,15 +131,23 @@ def build_draft_state(db: Session, league: League) -> dict:
     for p in picks:
         roster_counts[p.team_id] = roster_counts.get(p.team_id, 0) + 1
 
-    keepers = list(db.scalars(select(Keeper).where(Keeper.league_id == league.id)))
+    keepers = list(
+        db.scalars(
+            select(Keeper)
+            .where(Keeper.league_id == league.id)
+            .options(selectinload(Keeper.player))
+        )
+    )
     keeper_by_id = {k.id: k for k in keepers}
-    keeper_slot_map = engine.keeper_slot_assignments(db, league)
+    keeper_slot_map = engine.keeper_slot_assignments(db, league) if keepers else {}
     slot_owner = {slot.id: keeper_id for keeper_id, slot in keeper_slot_map.items()}
 
-    slots = db.scalars(
-        select(DraftSlot)
-        .where(DraftSlot.league_id == league.id)
-        .order_by(DraftSlot.pick_number)
+    slots = list(
+        db.scalars(
+            select(DraftSlot)
+            .where(DraftSlot.league_id == league.id)
+            .order_by(DraftSlot.pick_number)
+        )
     )
     board = []
     for slot in slots:
@@ -160,7 +172,8 @@ def build_draft_state(db: Session, league: League) -> dict:
                 break
     recent = picks[-8:][::-1]
 
-    all_available = engine.available_players(db, league)
+    if all_available is None:
+        all_available = engine.available_players(db, league)
     top_available = []
     for player, rank in all_available[:20]:
         top_available.append(
@@ -201,12 +214,17 @@ def build_draft_state(db: Session, league: League) -> dict:
 
 
 def build_team_state(db: Session, league: League, team: Team) -> dict:
-    state = build_draft_state(db, league)
+    avail = engine.available_players(db, league)
+    state = build_draft_state(db, league, all_available=avail)
     picks = list(
         db.scalars(
             select(Pick)
             .where(Pick.league_id == league.id, Pick.team_id == team.id)
             .join(DraftSlot)
+            .options(
+                selectinload(Pick.player),
+                selectinload(Pick.slot),
+            )
             .order_by(DraftSlot.pick_number)
         )
     )
@@ -224,9 +242,11 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
             "round": keeper_rounds.get(k.id, k.round),
         }
         for k in db.scalars(
-            select(Keeper).where(
+            select(Keeper)
+            .where(
                 Keeper.league_id == league.id, Keeper.team_id == team.id
             )
+            .options(selectinload(Keeper.player))
         )
     ]
 
@@ -287,7 +307,6 @@ def build_team_state(db: Session, league: League, team: Team) -> dict:
                 if len(next_picks) == 3:
                     break
 
-    avail = engine.available_players(db, league)
     players = [
         {
             "player_id": p.id,

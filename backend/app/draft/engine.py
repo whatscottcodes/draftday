@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..models import (
     DraftEvent,
@@ -110,14 +110,18 @@ def set_draft_order(
 
 
 def slot_status(db: Session, slot: DraftSlot) -> str:
-    pick = db.scalar(select(Pick).where(Pick.draft_slot_id == slot.id))
+    pick = db.scalar(select(Pick.id).where(Pick.draft_slot_id == slot.id))
     if pick is not None:
         return "FILLED"
     league = db.get(League, slot.league_id)
     if league is not None:
-        keeper_slots = keeper_slot_assignments(db, league)
-        if slot.id in {s.id for s in keeper_slots.values()}:
-            return "KEEPER"
+        has_keepers = db.scalar(
+            select(Keeper.id).where(Keeper.league_id == league.id).limit(1)
+        )
+        if has_keepers is not None:
+            keeper_slots = keeper_slot_assignments(db, league)
+            if slot.id in {s.id for s in keeper_slots.values()}:
+                return "KEEPER"
     return "OPEN"
 
 
@@ -130,16 +134,19 @@ def bulk_slot_statuses(db: Session, slots: list[DraftSlot]) -> dict[int, str]:
     if not slots:
         return {}
     slot_ids = [s.id for s in slots]
-    picked = {
-        p.draft_slot_id
-        for p in db.scalars(select(Pick).where(Pick.draft_slot_id.in_(slot_ids)))
-    }
+    picked = set(
+        db.scalars(select(Pick.draft_slot_id).where(Pick.draft_slot_id.in_(slot_ids)))
+    )
     keeper_slot_ids: set[int] = set()
     league = db.get(League, slots[0].league_id)
     if league is not None:
-        keeper_slot_ids = {
-            s.id for s in keeper_slot_assignments(db, league).values()
-        }
+        has_keepers = db.scalar(
+            select(Keeper.id).where(Keeper.league_id == league.id).limit(1)
+        )
+        if has_keepers is not None:
+            keeper_slot_ids = {
+                s.id for s in keeper_slot_assignments(db, league).values()
+            }
     statuses: dict[int, str] = {}
     for s in slots:
         if s.id in picked:
@@ -270,7 +277,11 @@ def effective_keeper_rounds(db: Session, league: League) -> dict[int, int]:
     Deterministic and independent of the order the keepers were selected.
     """
     keepers = list(
-        db.scalars(select(Keeper).where(Keeper.league_id == league.id))
+        db.scalars(
+            select(Keeper)
+            .where(Keeper.league_id == league.id)
+            .options(selectinload(Keeper.player))
+        )
     )
     if not keepers:
         return {}
@@ -334,7 +345,11 @@ def keeper_slot_assignments(
     and one round-5 keeper has exactly one slot marked.
     """
     keepers = list(
-        db.scalars(select(Keeper).where(Keeper.league_id == league.id))
+        db.scalars(
+            select(Keeper)
+            .where(Keeper.league_id == league.id)
+            .options(selectinload(Keeper.player))
+        )
     )
     if not keepers:
         return {}
@@ -388,13 +403,28 @@ def team_add_keeper(
 def current_slot(db: Session, league: League) -> DraftSlot | None:
     if league.status != LeagueStatus.LIVE:
         return None
-    slots = db.scalars(
-        select(DraftSlot)
-        .where(DraftSlot.league_id == league.id)
-        .order_by(DraftSlot.pick_number)
+    slots = list(
+        db.scalars(
+            select(DraftSlot)
+            .where(DraftSlot.league_id == league.id)
+            .order_by(DraftSlot.pick_number)
+        )
     )
+    if not slots:
+        return None
+    picked_slot_ids = set(
+        db.scalars(select(Pick.draft_slot_id).where(Pick.league_id == league.id))
+    )
+    keeper_slot_ids: set[int] = set()
+    has_keepers = db.scalar(
+        select(Keeper.id).where(Keeper.league_id == league.id).limit(1)
+    )
+    if has_keepers is not None:
+        keeper_slot_ids = {
+            s.id for s in keeper_slot_assignments(db, league).values()
+        }
     for slot in slots:
-        if slot_status(db, slot) == "OPEN":
+        if slot.id not in picked_slot_ids and slot.id not in keeper_slot_ids:
             return slot
     return None
 
@@ -402,17 +432,18 @@ def current_slot(db: Session, league: League) -> DraftSlot | None:
 def available_players(
     db: Session, league: League, limit: int | None = None
 ) -> list[tuple[Player, int | None]]:
-    picked_ids = {
-        p.player_id for p in db.scalars(select(Pick).where(Pick.league_id == league.id))
-    }
-    kept_ids = {
-        k.player_id
-        for k in db.scalars(select(Keeper).where(Keeper.league_id == league.id))
-    }
+    picked_ids = set(
+        db.scalars(select(Pick.player_id).where(Pick.league_id == league.id))
+    )
+    kept_ids = set(
+        db.scalars(select(Keeper.player_id).where(Keeper.league_id == league.id))
+    )
     taken = picked_ids | kept_ids
     ranked: dict[int, int] = {}
-    for r in db.scalars(select(Ranking).where(Ranking.league_id == league.id)):
-        ranked[r.player_id] = r.rank
+    for pid, r in db.execute(
+        select(Ranking.player_id, Ranking.rank).where(Ranking.league_id == league.id)
+    ):
+        ranked[pid] = r
     results: list[tuple[Player, int | None]] = []
     for p in db.scalars(select(Player).where(Player.league_id == league.id)):
         if p.id in taken:
@@ -443,12 +474,12 @@ def _validate_pick_target(
     if player is None or player.league_id != league.id:
         raise DraftError("Unknown player")
     taken_pick = db.scalar(
-        select(Pick).where(Pick.league_id == league.id, Pick.player_id == player_id)
+        select(Pick.id).where(Pick.league_id == league.id, Pick.player_id == player_id)
     )
     if taken_pick is not None:
         raise DraftError(f"{player.name} has already been drafted")
     kept = db.scalar(
-        select(Keeper).where(Keeper.league_id == league.id, Keeper.player_id == player_id)
+        select(Keeper.id).where(Keeper.league_id == league.id, Keeper.player_id == player_id)
     )
     if kept is not None:
         raise DraftError(f"{player.name} is already kept")

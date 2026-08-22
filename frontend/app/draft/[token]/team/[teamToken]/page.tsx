@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useMemo, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiJson, apiJsonRetry, connectDraftSocket } from "@/lib/api";
 import type { TeamState } from "@/lib/types";
 import { PositionBadge } from "@/components/PositionBadge";
@@ -33,45 +33,113 @@ export default function TeamPage({
   const [picking, setPicking] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<"roster" | "available">("roster");
-  const [viewInitialized, setViewInitialized] = useState(false);
+  const prevOnTheClockRef = useRef<boolean | null>(null);
 
+  const onTheClock = state?.on_the_clock;
   useEffect(() => {
-    if (state && !viewInitialized) {
-      if (state.on_the_clock) setView("available");
-      setViewInitialized(true);
+    if (onTheClock !== undefined) {
+      if (onTheClock && !prevOnTheClockRef.current) {
+        setView("available");
+      }
+      prevOnTheClockRef.current = onTheClock;
     }
-  }, [state, viewInitialized]);
+  }, [onTheClock]);
+
+  const fetchingRef = useRef<Promise<void> | null>(null);
 
   const fetchTeam = useCallback(async () => {
-    try {
-      setState(
-        await apiJson<TeamState>(`/api/draft/${token}/team/${teamToken}`),
-      );
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    }
+    if (fetchingRef.current) return fetchingRef.current;
+    const fetchPromise = (async () => {
+      try {
+        const data = await apiJson<TeamState>(
+          `/api/draft/${token}/team/${teamToken}`,
+        );
+        setState(data);
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        fetchingRef.current = null;
+      }
+    })();
+    fetchingRef.current = fetchPromise;
+    return fetchPromise;
   }, [token, teamToken]);
 
   useEffect(() => {
-    let ws: WebSocket;
+    let ws: WebSocket | null = null;
     let closed = false;
+
     apiJsonRetry<TeamState>(`/api/draft/${token}/team/${teamToken}`)
       .then((s) => {
-        setState(s);
-        setError(null);
+        if (!closed) {
+          setState(s);
+          setError(null);
+        }
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
+      .catch((e) => {
+        if (!closed) setError(e instanceof Error ? e.message : "Failed to load");
+      });
+
     const openSocket = () => {
-      ws = connectDraftSocket(token, () => fetchTeam(), setConnected);
+      ws = connectDraftSocket(
+        token,
+        (draftState) => {
+          if (closed) return;
+          // Instantly apply real-time state from WebSocket message
+          setState((prev) => {
+            if (!prev) return prev;
+            const isOnTheClock = Boolean(
+              draftState.current_slot &&
+              draftState.status === "LIVE" &&
+              draftState.current_slot.drafting_team_id === prev.team_id,
+            );
+            let myNext = null;
+            if (
+              draftState.status === "LIVE" ||
+              draftState.status === "COMPLETED"
+            ) {
+              for (const slot of draftState.board) {
+                if (
+                  slot.drafting_team_id === prev.team_id &&
+                  slot.status === "OPEN"
+                ) {
+                  myNext = slot;
+                  break;
+                }
+              }
+            }
+            return {
+              ...prev,
+              status: draftState.status,
+              current_slot: draftState.current_slot,
+              on_the_clock: isOnTheClock,
+              my_next_slot: myNext,
+              recent_picks: draftState.recent_picks,
+              available_count: draftState.available_count,
+            };
+          });
+          // Also fetch full team data for complete roster and available players sync
+          fetchTeam();
+        },
+        setConnected,
+      );
     };
+
     openSocket();
-    const retry = setInterval(() => {
-      if (!closed && ws.readyState === WebSocket.CLOSED) openSocket();
-    }, 3000);
+
+    const interval = setInterval(() => {
+      if (closed) return;
+      if (!ws || ws.readyState === WebSocket.CLOSED) {
+        openSocket();
+      }
+      // Periodic fallback sync to ensure state is fresh even if WebSocket packets dropped
+      fetchTeam();
+    }, 4000);
+
     return () => {
       closed = true;
-      clearInterval(retry);
+      clearInterval(interval);
       ws?.close();
     };
   }, [fetchTeam, token, teamToken]);
@@ -102,6 +170,32 @@ export default function TeamPage({
       await apiJson(`/api/draft/${token}/team/${teamToken}/picks`, {
         method: "POST",
         body: JSON.stringify({ player_id: playerId }),
+      });
+      setState((prev) => {
+        if (!prev) return prev;
+        const pickedPlayer = prev.players.find((p) => p.player_id === playerId);
+        const newPlayers = prev.players.filter((p) => p.player_id !== playerId);
+        const newRoster = pickedPlayer
+          ? [
+              ...prev.roster,
+              {
+                player_id: pickedPlayer.player_id,
+                player_name: pickedPlayer.name,
+                position: pickedPlayer.position,
+                nfl_team: pickedPlayer.nfl_team,
+                pick_number: prev.current_slot?.pick_number ?? 0,
+                round: prev.current_slot?.round ?? 0,
+                pick_type: "live" as const,
+              },
+            ]
+          : prev.roster;
+        return {
+          ...prev,
+          on_the_clock: false,
+          available_count: Math.max(0, prev.available_count - 1),
+          players: newPlayers,
+          roster: newRoster,
+        };
       });
       await fetchTeam();
     } catch (e) {

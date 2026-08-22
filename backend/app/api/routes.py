@@ -805,25 +805,40 @@ def team_delete_keeper(
 # ---------------------------------------------------------------- websocket
 
 
-def _build_state(league: League) -> dict:
+def _build_state(league_id: int) -> tuple[dict, int] | None:
     from ..database import SessionLocal
 
     db = SessionLocal()
     try:
-        return state_builder.build_draft_state(db, league)
+        league = db.get(League, league_id)
+        if league is None:
+            return None
+        return state_builder.build_draft_state(db, league), league.id
     finally:
         db.close()
 
 
-async def _broadcast(league: League) -> None:
-    data = await asyncio.to_thread(_build_state, league)
-    await manager.broadcast(league.id, {"type": "state", "data": data})
+async def _broadcast(league_id: int) -> None:
+    res = await asyncio.to_thread(_build_state, league_id)
+    if res is not None:
+        data, lid = res
+        await manager.broadcast(lid, {"type": "state", "data": data})
 
 
-def _schedule_broadcast(league: League) -> None:
+def _schedule_broadcast(league: League | int) -> None:
+    league_id = league if isinstance(league, int) else league.id
     loop = main_loop
     if loop is not None and not loop.is_closed():
-        asyncio.run_coroutine_threadsafe(_broadcast(league), loop)
+        fut = asyncio.run_coroutine_threadsafe(_broadcast(league_id), loop)
+
+        def _on_done(f):
+            try:
+                f.result()
+            except Exception as e:
+                import logging
+                logging.getLogger("draftnight").error("Broadcast failed: %s", e)
+
+        fut.add_done_callback(_on_done)
 
 
 @router.websocket("/draft/{token}/ws")
